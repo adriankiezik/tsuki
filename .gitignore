@@ -33,7 +33,9 @@ tsuki.exe
 *.pdb
 
 # IDE specific files
-.vscode/
+.vscode/launch.json
+.vscode/tasks.json
+.vscode/.ropeproject/
 .idea/
 *.swp
 *.swo
