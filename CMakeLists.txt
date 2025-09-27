@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(Tsuki VERSION 1.0.0 LANGUAGES CXX)
+project(Tsuki VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -78,6 +78,9 @@ set(LUA_LIB_SOURCES
 
 # Create Lua static library
 add_library(lua STATIC ${LUA_CORE_SOURCES} ${LUA_LIB_SOURCES})
+
+# Explicitly set Lua as C library
+set_target_properties(lua PROPERTIES LINKER_LANGUAGE C)
 
 # Set Lua include directory
 target_include_directories(lua PUBLIC ${LUA_SOURCE_DIR})
