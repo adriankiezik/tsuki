@@ -61,6 +61,34 @@ echo -e "${GREEN}Building Tsuki...${NC}"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
+# Check for essential dependencies on Linux
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    missing_deps=()
+
+    if ! pkg-config --exists lua5.4 2>/dev/null && ! pkg-config --exists lua 2>/dev/null; then
+        missing_deps+=("liblua5.4-dev")
+    fi
+
+    if ! pkg-config --exists libzip 2>/dev/null; then
+        missing_deps+=("libzip-dev")
+    fi
+
+    if ! pkg-config --exists x11 2>/dev/null; then
+        missing_deps+=("libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev")
+    fi
+
+    if ! pkg-config --exists gl 2>/dev/null; then
+        missing_deps+=("libgl1-mesa-dev")
+    fi
+
+    if [[ ${#missing_deps[@]} -gt 0 ]]; then
+        echo -e "${YELLOW}Missing dependencies detected. Install with:${NC}"
+        echo -e "${YELLOW}sudo apt-get install -y ${missing_deps[*]} libxss-dev libasound2-dev libpulse-dev libudev-dev libdbus-1-dev libwayland-dev libxkbcommon-dev wayland-protocols${NC}"
+        echo -e "${YELLOW}Continuing build anyway...${NC}"
+        echo
+    fi
+fi
+
 if [ "$BUILD_SYSTEM" = "cmake" ]; then
     # CMake build
     if [ $CLEAN -eq 1 ]; then

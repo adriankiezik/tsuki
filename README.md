@@ -45,7 +45,11 @@ end
 
 ### Ubuntu/Debian
 ```bash
-sudo apt-get install build-essential cmake pkg-config liblua5.4-dev libzip-dev curl
+sudo apt-get update
+sudo apt-get install -y build-essential cmake pkg-config liblua5.4-dev libzip-dev curl \
+  libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev \
+  libxss-dev libgl1-mesa-dev libasound2-dev libpulse-dev libudev-dev libdbus-1-dev \
+  libwayland-dev libxkbcommon-dev wayland-protocols
 # SDL3 will be built automatically
 ./build.sh
 ```

@@ -41,7 +41,25 @@ jobs:
           liblua5.4-dev \
           libzip-dev \
           curl \
-          git
+          git \
+          libx11-dev \
+          libxext-dev \
+          libxrandr-dev \
+          libxcursor-dev \
+          libxfixes-dev \
+          libxi-dev \
+          libxss-dev \
+          libgl1-mesa-dev \
+          libglu1-mesa-dev \
+          libasound2-dev \
+          libpulse-dev \
+          libudev-dev \
+          libdbus-1-dev \
+          libwayland-dev \
+          libxkbcommon-dev \
+          libwayland-cursor0 \
+          libwayland-egl1-mesa \
+          wayland-protocols
 
         # Install SDL3 from source (not yet in Ubuntu repos)
         git clone https://github.com/libsdl-org/SDL.git --branch main --depth 1
