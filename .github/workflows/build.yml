@@ -145,6 +145,7 @@ jobs:
           cmake-${{ matrix.os }}-
 
     - name: Configure CMake
+      shell: bash
       env:
         CC: ${{ matrix.cc }}
         CXX: ${{ matrix.cxx }}
@@ -168,6 +169,8 @@ jobs:
         # Use all available CPU cores and enable parallelization
         if [ "${{ matrix.os }}" = "windows-latest" ]; then
           cmake --build . --config Release --parallel
+        elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+          ninja -j$(sysctl -n hw.logicalcpu)
         else
           ninja -j$(nproc)
         fi
