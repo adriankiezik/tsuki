@@ -56,7 +56,11 @@ target_link_libraries(libtsuki SDL3::SDL3-static lua zip zlibstatic)
 if(UNIX)
     target_link_libraries(libtsuki m)
 endif()
-target_compile_options(libtsuki PRIVATE -Wall -Wextra -Wpedantic)
+if(MSVC)
+    target_compile_options(libtsuki PRIVATE /W4)
+else()
+    target_compile_options(libtsuki PRIVATE -Wall -Wextra -Wpedantic)
+endif()
 
 # Executables
 add_executable(tsuki src/runtime/main.cpp)
