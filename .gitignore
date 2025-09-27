@@ -1,0 +1,57 @@
+# Build directories
+build/
+cmake-build-*/
+out/
+
+# Binaries
+*.exe
+*.out
+*.app
+tsuki
+tsuki.exe
+
+# Object files
+*.o
+*.obj
+*.ko
+*.elf
+
+# Libraries
+*.lib
+*.a
+*.la
+*.lo
+*.so
+*.so.*
+*.dylib
+*.dll
+
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# IDE specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile.cmake
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+
+# Build artifacts
+bin/
+lib/
+
+# AI tools
+.claude

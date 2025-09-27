@@ -1,0 +1,120 @@
+name: Build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            cmake_preset: linux
+          - os: macos-latest
+            platform: macos
+            arch: x64
+            cmake_preset: macos
+          - os: windows-latest
+            platform: windows
+            arch: x64
+            cmake_preset: windows
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          pkg-config \
+          liblua5.4-dev \
+          libzip-dev \
+          curl \
+          git
+
+        # Install SDL3 from source (not yet in Ubuntu repos)
+        git clone https://github.com/libsdl-org/SDL.git --branch main --depth 1
+        cd SDL
+        mkdir build && cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local
+        make -j$(nproc)
+        sudo make install
+        sudo ldconfig
+
+    - name: Install dependencies (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew update
+        brew install cmake pkg-config lua@5.4 libzip curl git
+
+        # Install SDL3 from source
+        git clone https://github.com/libsdl-org/SDL.git --branch main --depth 1
+        cd SDL
+        mkdir build && cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local
+        make -j$(sysctl -n hw.ncpu)
+        sudo make install
+
+    - name: Install dependencies (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: powershell
+      run: |
+        # Install vcpkg
+        git clone https://github.com/Microsoft/vcpkg.git
+        cd vcpkg
+        .\bootstrap-vcpkg.bat
+        .\vcpkg install lua:x64-windows libzip:x64-windows curl:x64-windows
+
+        # Install SDL3 from source
+        git clone https://github.com/libsdl-org/SDL.git --branch main --depth 1
+        cd SDL
+        mkdir build
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../vcpkg/scripts/buildsystems/vcpkg.cmake
+        cmake --build . --config Release
+        cmake --install . --config Release
+
+    - name: Configure CMake (Unix)
+      if: matrix.os != 'windows-latest'
+      run: |
+        mkdir build
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Release
+
+    - name: Configure CMake (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: powershell
+      run: |
+        mkdir build
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../vcpkg/scripts/buildsystems/vcpkg.cmake
+
+    - name: Build
+      run: |
+        cd build
+        cmake --build . --config Release -j
+
+    - name: Test build
+      run: |
+        cd build
+        ./tsuki --version || ./Release/tsuki.exe --version
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: tsuki-${{ matrix.platform }}-${{ matrix.arch }}-build
+        path: |
+          build/tsuki*
+          build/Release/tsuki.exe
+        retention-days: 7
