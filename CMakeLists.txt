@@ -16,7 +16,15 @@ pkg_check_modules(LUA REQUIRED lua5.4)
 
 # Also find the lua library explicitly
 find_library(LUA_LIBRARY NAMES lua5.4 lua)
-find_path(LUA_INCLUDE_DIR lua.h PATH_SUFFIXES lua5.4 lua)
+find_path(LUA_INCLUDE_DIR lua.h
+    PATH_SUFFIXES lua5.4 lua
+    PATHS
+        /opt/homebrew/include
+        /opt/homebrew/include/lua@5.4
+        /usr/local/include
+        /usr/local/include/lua@5.4
+        /usr/include
+)
 
 if(NOT LUA_LIBRARY)
     message(FATAL_ERROR "Lua library not found")
@@ -52,6 +60,7 @@ target_include_directories(libtsuki
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${SDL3_INCLUDE_DIRS}
         ${LUA_INCLUDE_DIRS}
+        ${LUA_INCLUDE_DIR}
         ${LIBZIP_INCLUDE_DIRS}
 )
 
