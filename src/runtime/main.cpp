@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <cstring>
+#include <unistd.h>
 
 void printUsage(const char* program_name) {
     std::cout << "Tsuki Game Engine v1.0.0\n";
