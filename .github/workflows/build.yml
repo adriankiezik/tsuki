@@ -95,9 +95,13 @@ jobs:
         brew update
         brew install cmake pkg-config lua@5.4 libzip curl git
 
-        # Link lua@5.4 to make headers available in standard paths
-        brew unlink lua || true
-        brew link --force lua@5.4
+    - name: Set Lua environment variables (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        # Set explicit paths for Lua on macOS
+        echo "LUA_INCLUDE_DIR=/opt/homebrew/include/lua@5.4" >> $GITHUB_ENV
+        echo "LUA_LIBRARY_PATH=/opt/homebrew/lib" >> $GITHUB_ENV
+        echo "PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
 
     - name: Build SDL3 from source (macOS)
       if: matrix.os == 'macos-latest' && steps.cache-sdl3-macos.outputs.cache-hit != 'true'
