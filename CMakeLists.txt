@@ -45,11 +45,14 @@ file(GLOB_RECURSE TSUKI_SOURCES
 add_library(libtsuki STATIC ${TSUKI_SOURCES})
 
 # Target-specific include directories (modern CMake approach)
-target_include_directories(libtsuki PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${SDL3_INCLUDE_DIRS}
-    ${LUA_INCLUDE_DIRS}
-    ${LIBZIP_INCLUDE_DIRS}
+target_include_directories(libtsuki
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${SDL3_INCLUDE_DIRS}
+        ${LUA_INCLUDE_DIRS}
+        ${LIBZIP_INCLUDE_DIRS}
 )
 
 if(SDL3_IMAGE_FOUND)
