@@ -191,10 +191,15 @@ jobs:
     - name: Bundle Linux executable
       shell: bash
       run: |
-        find build/ -name "tsuki" -type f -executable -exec cp {} release-bundle/ \; || echo "No tsuki binary found"
-        find build/ -name "tsuki_example" -type f -executable -exec cp {} release-bundle/ \; || echo "No example binary found"
+        # Copy binaries (they exist but may not have execute permissions in artifacts)
+        find build/ -name "tsuki" -type f -exec cp {} release-bundle/ \; || echo "No tsuki binary found"
+        find build/ -name "tsuki_example" -type f -exec cp {} release-bundle/ \; || echo "No example binary found"
+
+        # Set execute permissions
         if [ -f release-bundle/tsuki ]; then
           chmod +x release-bundle/tsuki*
+          echo "✅ Successfully bundled Linux executables"
+          ls -la release-bundle/
         else
           echo "ERROR: No executables found in build artifacts"
           ls -la build/
@@ -249,9 +254,15 @@ jobs:
     - name: Bundle macOS executable
       shell: bash
       run: |
-        find build/ -name "tsuki" -type f -executable -exec cp {} release-bundle/ \; || echo "No tsuki binary found"
+        # Copy binaries (macOS find doesn't support -executable flag)
+        find build/ -name "tsuki" -type f -exec cp {} release-bundle/ \; || echo "No tsuki binary found"
+        find build/ -name "tsuki_example" -type f -exec cp {} release-bundle/ \; || echo "No example binary found"
+
+        # Set execute permissions
         if [ -f release-bundle/tsuki ]; then
-          chmod +x release-bundle/tsuki
+          chmod +x release-bundle/tsuki*
+          echo "✅ Successfully bundled macOS executables"
+          ls -la release-bundle/
         else
           echo "ERROR: No executables found in build artifacts"
           ls -la build/
@@ -331,8 +342,14 @@ jobs:
     - name: Bundle Windows executable
       shell: bash
       run: |
+        # Copy Windows executables
         find build/ -name "*.exe" -type f -exec cp {} release-bundle/ \; || echo "No .exe files found"
-        if [ ! -f release-bundle/*.exe ]; then
+
+        # Check if we got any executables
+        if ls release-bundle/*.exe 1> /dev/null 2>&1; then
+          echo "✅ Successfully bundled Windows executables"
+          ls -la release-bundle/
+        else
           echo "ERROR: No executables found in build artifacts"
           ls -la build/
           exit 1
