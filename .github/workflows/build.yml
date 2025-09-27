@@ -95,6 +95,9 @@ jobs:
         brew update
         brew install cmake pkg-config lua@5.4 libzip curl git
 
+        # Link lua@5.4 to make headers available in standard paths
+        brew link --force lua@5.4
+
     - name: Build SDL3 from source (macOS)
       if: matrix.os == 'macos-latest' && steps.cache-sdl3-macos.outputs.cache-hit != 'true'
       run: |
