@@ -17,9 +17,152 @@ on:
         default: true
 
 jobs:
-  # Reuse the optimized build workflow
+  # Build using same optimized steps as build.yml (but skip the conditional check for releases)
   build:
-    uses: ./.github/workflows/build.yml
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            cc: gcc
+            cxx: g++
+          - os: macos-latest
+            platform: macos
+            arch: x64
+            cc: clang
+            cxx: clang++
+          - os: windows-latest
+            platform: windows
+            arch: x64
+            cc: cl
+            cxx: cl
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 1
+
+    # Reuse all the caching and build optimizations from build.yml
+    - name: Cache submodules
+      uses: actions/cache@v4
+      with:
+        path: |
+          vendor/
+          .git/modules/
+        key: submodules-${{ runner.os }}-${{ hashFiles('.gitmodules') }}
+        restore-keys: |
+          submodules-${{ runner.os }}-
+
+    - name: Cache apt packages
+      if: matrix.os == 'ubuntu-latest'
+      uses: actions/cache@v4
+      with:
+        path: /var/cache/apt
+        key: apt-${{ runner.os }}-${{ hashFiles('.github/workflows/release.yml') }}
+        restore-keys: |
+          apt-${{ runner.os }}-
+
+    - name: Install build dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y --no-install-recommends \
+          build-essential cmake ninja-build ccache \
+          libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxinerama-dev libxi-dev \
+          libxss-dev libxxf86vm-dev libxfixes-dev libwayland-dev libxkbcommon-dev \
+          libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev
+
+    - name: Cache Homebrew
+      if: matrix.os == 'macos-latest'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/Library/Caches/Homebrew
+          /usr/local/Homebrew
+        key: brew-${{ runner.os }}-${{ hashFiles('.github/workflows/release.yml') }}
+        restore-keys: |
+          brew-${{ runner.os }}-
+
+    - name: Install build tools (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install ninja ccache
+
+    - name: Setup ccache
+      if: matrix.os != 'windows-latest'
+      uses: actions/cache@v4
+      with:
+        path: ~/.ccache
+        key: ccache-${{ matrix.os }}-${{ matrix.cc }}-${{ github.sha }}
+        restore-keys: |
+          ccache-${{ matrix.os }}-${{ matrix.cc }}-
+
+    - name: Configure ccache
+      if: matrix.os != 'windows-latest'
+      run: |
+        ccache --set-config=cache_dir=~/.ccache
+        ccache --set-config=max_size=500M
+        ccache --set-config=compression=true
+        ccache --zero-stats
+
+    - name: Cache CMake build
+      uses: actions/cache@v4
+      with:
+        path: |
+          build/
+          !build/tsuki*
+          !build/Release/
+        key: cmake-${{ matrix.os }}-${{ hashFiles('**/CMakeLists.txt', 'vendor/**') }}
+        restore-keys: |
+          cmake-${{ matrix.os }}-
+
+    - name: Configure CMake
+      shell: bash
+      env:
+        CC: ${{ matrix.cc }}
+        CXX: ${{ matrix.cxx }}
+      run: |
+        mkdir -p build
+        cd build
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE=OFF
+        else
+          cmake .. -GNinja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_VERBOSE_MAKEFILE=OFF
+        fi
+
+    - name: Build
+      shell: bash
+      run: |
+        cd build
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          cmake --build . --config Release --parallel
+        elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+          ninja -j$(sysctl -n hw.logicalcpu)
+        else
+          ninja -j$(nproc)
+        fi
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: tsuki-${{ matrix.platform }}-${{ matrix.arch }}-build
+        path: |
+          build/tsuki${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+          build/Release/tsuki.exe
+          build/tsuki_example${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+          build/Release/tsuki_example.exe
+        retention-days: 7
+        if-no-files-found: warn
 
   # Bundle and release the artifacts
   release:
