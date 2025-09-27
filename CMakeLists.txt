@@ -35,27 +35,6 @@ pkg_check_modules(SDL3_IMAGE SDL3_image)
 pkg_check_modules(SDL3_MIXER SDL3_mixer)
 pkg_check_modules(SDL3_TTF SDL3_ttf)
 
-# Include directories
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
-include_directories(${SDL3_INCLUDE_DIRS})
-include_directories(${LUA_INCLUDE_DIRS})
-include_directories(${LIBZIP_INCLUDE_DIRS})
-
-if(SDL3_IMAGE_FOUND)
-    include_directories(${SDL3_IMAGE_INCLUDE_DIRS})
-    add_compile_definitions(TSUKI_HAS_SDL_IMAGE)
-endif()
-
-if(SDL3_MIXER_FOUND)
-    include_directories(${SDL3_MIXER_INCLUDE_DIRS})
-    add_compile_definitions(TSUKI_HAS_SDL_MIXER)
-endif()
-
-if(SDL3_TTF_FOUND)
-    include_directories(${SDL3_TTF_INCLUDE_DIRS})
-    add_compile_definitions(TSUKI_HAS_SDL_TTF)
-endif()
-
 # Source files
 file(GLOB_RECURSE TSUKI_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
@@ -64,6 +43,29 @@ file(GLOB_RECURSE TSUKI_SOURCES
 
 # Create the library
 add_library(libtsuki STATIC ${TSUKI_SOURCES})
+
+# Target-specific include directories (modern CMake approach)
+target_include_directories(libtsuki PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${SDL3_INCLUDE_DIRS}
+    ${LUA_INCLUDE_DIRS}
+    ${LIBZIP_INCLUDE_DIRS}
+)
+
+if(SDL3_IMAGE_FOUND)
+    target_include_directories(libtsuki PUBLIC ${SDL3_IMAGE_INCLUDE_DIRS})
+    target_compile_definitions(libtsuki PUBLIC TSUKI_HAS_SDL_IMAGE)
+endif()
+
+if(SDL3_MIXER_FOUND)
+    target_include_directories(libtsuki PUBLIC ${SDL3_MIXER_INCLUDE_DIRS})
+    target_compile_definitions(libtsuki PUBLIC TSUKI_HAS_SDL_MIXER)
+endif()
+
+if(SDL3_TTF_FOUND)
+    target_include_directories(libtsuki PUBLIC ${SDL3_TTF_INCLUDE_DIRS})
+    target_compile_definitions(libtsuki PUBLIC TSUKI_HAS_SDL_TTF)
+endif()
 
 # Link libraries
 target_link_libraries(libtsuki ${SDL3_LIBRARIES} ${LUA_LIBRARY} ${LUA_LIBRARIES} ${LIBZIP_LIBRARIES} m)

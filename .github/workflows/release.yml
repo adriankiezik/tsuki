@@ -52,6 +52,14 @@ jobs:
           echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
         fi
 
+    - name: Cache SDL3 build (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      uses: actions/cache@v4
+      id: cache-sdl3-ubuntu
+      with:
+        path: /usr/local
+        key: ${{ runner.os }}-sdl3-v2-${{ hashFiles('.github/workflows/release.yml') }}
+
     - name: Install dependencies (Ubuntu)
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -85,6 +93,9 @@ jobs:
           libwayland-egl1-mesa \
           wayland-protocols
 
+    - name: Build SDL3 from source (Ubuntu)
+      if: matrix.os == 'ubuntu-latest' && steps.cache-sdl3-ubuntu.outputs.cache-hit != 'true'
+      run: |
         # Install SDL3 from source
         git clone https://github.com/libsdl-org/SDL.git --branch main --depth 1
         cd SDL
@@ -94,12 +105,23 @@ jobs:
         sudo make install
         sudo ldconfig
 
+    - name: Cache SDL3 build (macOS)
+      if: matrix.os == 'macos-latest'
+      uses: actions/cache@v4
+      id: cache-sdl3-macos
+      with:
+        path: /usr/local
+        key: ${{ runner.os }}-sdl3-v2-${{ hashFiles('.github/workflows/release.yml') }}
+
     - name: Install dependencies (macOS)
       if: matrix.os == 'macos-latest'
       run: |
         brew update
         brew install cmake pkg-config lua@5.4 libzip curl git zip
 
+    - name: Build SDL3 from source (macOS)
+      if: matrix.os == 'macos-latest' && steps.cache-sdl3-macos.outputs.cache-hit != 'true'
+      run: |
         # Install SDL3 from source
         git clone https://github.com/libsdl-org/SDL.git --branch main --depth 1
         cd SDL
