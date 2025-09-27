@@ -7,10 +7,33 @@ on:
     branches: [ master ]
 
 jobs:
+  # Skip builds if only documentation files changed
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.changes.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            code:
+              - '**/*.cpp'
+              - '**/*.c'
+              - '**/*.h'
+              - '**/*.hpp'
+              - '**/CMakeLists.txt'
+              - '**/*.cmake'
+              - 'vendor/**'
+              - '.github/workflows/**'
+
   build:
     name: Build ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -19,47 +42,139 @@ jobs:
             platform: linux
             arch: x64
             cmake_preset: linux
+            cc: gcc
+            cxx: g++
           - os: macos-latest
             platform: macos
             arch: x64
             cmake_preset: macos
+            cc: clang
+            cxx: clang++
           - os: windows-latest
             platform: windows
             arch: x64
             cmake_preset: windows
+            cc: cl
+            cxx: cl
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         submodules: recursive
+        fetch-depth: 1
 
-    # No external dependencies needed! Everything built from submodules
+    # Cache submodules to avoid re-downloading large repos like SDL3
+    - name: Cache submodules
+      uses: actions/cache@v4
+      with:
+        path: |
+          vendor/
+          .git/modules/
+        key: submodules-${{ runner.os }}-${{ hashFiles('.gitmodules') }}
+        restore-keys: |
+          submodules-${{ runner.os }}-
+
+    # Cache apt packages for Ubuntu
+    - name: Cache apt packages
+      if: matrix.os == 'ubuntu-latest'
+      uses: actions/cache@v4
+      with:
+        path: /var/cache/apt
+        key: apt-${{ runner.os }}-${{ hashFiles('.github/workflows/build.yml') }}
+        restore-keys: |
+          apt-${{ runner.os }}-
+
+    # Install Ubuntu dependencies with caching
     - name: Install build dependencies (Ubuntu)
       if: matrix.os == 'ubuntu-latest'
       run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential cmake \
+        sudo apt-get update -qq
+        sudo apt-get install -y --no-install-recommends \
+          build-essential cmake ninja-build ccache \
           libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxinerama-dev libxi-dev \
           libxss-dev libxxf86vm-dev libxfixes-dev libwayland-dev libxkbcommon-dev \
           libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev
 
-    - name: Install basic build tools (macOS)
+    # Install macOS dependencies with caching
+    - name: Cache Homebrew
+      if: matrix.os == 'macos-latest'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/Library/Caches/Homebrew
+          /usr/local/Homebrew
+        key: brew-${{ runner.os }}-${{ hashFiles('.github/workflows/build.yml') }}
+        restore-keys: |
+          brew-${{ runner.os }}-
+
+    - name: Install build tools (macOS)
       if: matrix.os == 'macos-latest'
       run: |
-        # macOS already has cmake and clang, just ensure cmake is available
-        which cmake || brew install cmake
+        # Use ninja for faster builds
+        brew install ninja ccache
+
+    # Setup ccache for faster incremental builds
+    - name: Setup ccache
+      if: matrix.os != 'windows-latest'
+      uses: actions/cache@v4
+      with:
+        path: ~/.ccache
+        key: ccache-${{ matrix.os }}-${{ matrix.cc }}-${{ github.sha }}
+        restore-keys: |
+          ccache-${{ matrix.os }}-${{ matrix.cc }}-
+
+    - name: Configure ccache
+      if: matrix.os != 'windows-latest'
+      run: |
+        ccache --set-config=cache_dir=~/.ccache
+        ccache --set-config=max_size=500M
+        ccache --set-config=compression=true
+        ccache --zero-stats
+
+    # Cache CMake build directory
+    - name: Cache CMake build
+      uses: actions/cache@v4
+      with:
+        path: |
+          build/
+          !build/tsuki*
+          !build/Release/
+        key: cmake-${{ matrix.os }}-${{ hashFiles('**/CMakeLists.txt', 'vendor/**') }}
+        restore-keys: |
+          cmake-${{ matrix.os }}-
 
     - name: Configure CMake
+      env:
+        CC: ${{ matrix.cc }}
+        CXX: ${{ matrix.cxx }}
       run: |
         mkdir -p build
         cd build
-        cmake .. -DCMAKE_BUILD_TYPE=Release
+        # Use Ninja for faster builds on Linux/macOS, and enable compiler caching
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE=OFF
+        else
+          cmake .. -GNinja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_VERBOSE_MAKEFILE=OFF
+        fi
 
     - name: Build
+      shell: bash
       run: |
         cd build
-        cmake --build . --config Release --parallel
+        # Use all available CPU cores and enable parallelization
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          cmake --build . --config Release --parallel
+        else
+          ninja -j$(nproc)
+        fi
+
+    - name: Show ccache stats
+      if: matrix.os != 'windows-latest'
+      run: ccache --show-stats
 
     - name: Test build
       shell: bash
