@@ -5,33 +5,22 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Find SDL3 (required)
-if(NOT WIN32)
-    # Use pkg-config on Unix systems
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(SDL3 REQUIRED sdl3)
-else()
-    # Manual detection for Windows
-    find_path(SDL3_INCLUDE_DIRS SDL3/SDL.h
-        PATHS
-            ${CMAKE_PREFIX_PATH}/include
-            ${CMAKE_CURRENT_SOURCE_DIR}/../SDL3/include
-            ${CMAKE_CURRENT_SOURCE_DIR}/SDL3/include
-    )
-    find_library(SDL3_LIBRARIES NAMES SDL3 SDL3-static
-        PATHS
-            ${CMAKE_PREFIX_PATH}/lib
-            ${CMAKE_CURRENT_SOURCE_DIR}/../SDL3/lib
-            ${CMAKE_CURRENT_SOURCE_DIR}/SDL3/lib
-    )
+# Build SDL3 from vendor directory (completely self-contained)
+set(SDL3_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/sdl3)
+message(STATUS "Building SDL3 from vendor directory: ${SDL3_SOURCE_DIR}")
 
-    if(NOT SDL3_INCLUDE_DIRS OR NOT SDL3_LIBRARIES)
-        message(FATAL_ERROR "SDL3 not found. Please set CMAKE_PREFIX_PATH to SDL3 installation directory.")
-    endif()
+# Configure SDL3 build options - minimal for our needs
+set(SDL_SHARED OFF CACHE BOOL "Build SDL3 as shared library")
+set(SDL_STATIC ON CACHE BOOL "Build SDL3 as static library")
+set(SDL_TEST OFF CACHE BOOL "Build SDL3 test programs")
+set(SDL_TESTS OFF CACHE BOOL "Build SDL3 tests")
 
-    message(STATUS "Found SDL3 include: ${SDL3_INCLUDE_DIRS}")
-    message(STATUS "Found SDL3 library: ${SDL3_LIBRARIES}")
-endif()
+# Add SDL3 subdirectory to build it
+add_subdirectory(${SDL3_SOURCE_DIR} ${CMAKE_BINARY_DIR}/vendor/sdl3)
+
+# Set SDL3 variables for linking
+set(SDL3_LIBRARIES SDL3::SDL3-static)
+set(SDL3_INCLUDE_DIRS ${SDL3_SOURCE_DIR}/include)
 
 # Build Lua from vendor directory (no external dependencies needed)
 set(LUA_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/lua)
@@ -104,39 +93,34 @@ message(STATUS "Building Lua from vendor directory: ${LUA_SOURCE_DIR}")
 message(STATUS "Lua include directory: ${LUA_INCLUDE_DIR}")
 
 
-# Find libzip for .tsuki file support
-if(NOT WIN32)
-    pkg_check_modules(LIBZIP REQUIRED libzip)
-    # Use the full link libraries for proper linking
-    set(LIBZIP_LINK_LIBS ${LIBZIP_LINK_LIBRARIES})
-else()
-    # Manual detection for Windows
-    find_path(LIBZIP_INCLUDE_DIRS zip.h
-        PATHS
-            ${CMAKE_PREFIX_PATH}/include
-            ${VCPKG_ROOT}/installed/x64-windows/include
-    )
-    find_library(LIBZIP_LIBRARIES NAMES zip libzip
-        PATHS
-            ${CMAKE_PREFIX_PATH}/lib
-            ${VCPKG_ROOT}/installed/x64-windows/lib
-    )
+# Build libzip from vendor directory (completely self-contained)
+set(LIBZIP_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/libzip)
+message(STATUS "Building libzip from vendor directory: ${LIBZIP_SOURCE_DIR}")
 
-    if(NOT LIBZIP_INCLUDE_DIRS OR NOT LIBZIP_LIBRARIES)
-        message(FATAL_ERROR "libzip not found. Please install via vcpkg or set CMAKE_PREFIX_PATH.")
-    endif()
+# Configure libzip build options - minimal for our needs
+set(ENABLE_COMMONCRYPTO OFF CACHE BOOL "Enable use of CommonCrypto")
+set(ENABLE_GNUTLS OFF CACHE BOOL "Enable use of GnuTLS")
+set(ENABLE_MBEDTLS OFF CACHE BOOL "Enable use of mbed TLS")
+set(ENABLE_OPENSSL OFF CACHE BOOL "Enable use of OpenSSL")
+set(ENABLE_WINDOWS_CRYPTO OFF CACHE BOOL "Enable use of Windows cryptography libraries")
+set(ENABLE_BZIP2 OFF CACHE BOOL "Enable use of BZip2")
+set(ENABLE_LZMA OFF CACHE BOOL "Enable use of LZMA")
+set(ENABLE_ZSTD OFF CACHE BOOL "Enable use of Zstandard")
+set(BUILD_TOOLS OFF CACHE BOOL "Build tools in the src directory")
+set(BUILD_REGRESS OFF CACHE BOOL "Build regression tests")
+set(BUILD_EXAMPLES OFF CACHE BOOL "Build examples")
+set(BUILD_DOC OFF CACHE BOOL "Build documentation")
 
-    set(LIBZIP_LINK_LIBS ${LIBZIP_LIBRARIES})
-    message(STATUS "Found libzip include: ${LIBZIP_INCLUDE_DIRS}")
-    message(STATUS "Found libzip library: ${LIBZIP_LIBRARIES}")
-endif()
+# Add libzip subdirectory to build it
+add_subdirectory(${LIBZIP_SOURCE_DIR} ${CMAKE_BINARY_DIR}/vendor/libzip)
 
-# Find optional SDL3 extensions (only on Unix for now)
-if(NOT WIN32)
-    pkg_check_modules(SDL3_IMAGE SDL3_image)
-    pkg_check_modules(SDL3_MIXER SDL3_mixer)
-    pkg_check_modules(SDL3_TTF SDL3_ttf)
-endif()
+# Set libzip variables for linking
+set(LIBZIP_LIBRARIES zip)
+set(LIBZIP_INCLUDE_DIRS ${LIBZIP_SOURCE_DIR}/lib)
+set(LIBZIP_LINK_LIBS zip)
+
+# Note: SDL3 extensions (image, mixer, ttf) are omitted for minimal build
+# These can be added later as additional submodules if needed
 
 # Source files
 file(GLOB_RECURSE TSUKI_SOURCES
@@ -159,39 +143,14 @@ target_include_directories(libtsuki
         ${LIBZIP_INCLUDE_DIRS}
 )
 
-if(SDL3_IMAGE_FOUND)
-    target_include_directories(libtsuki PUBLIC ${SDL3_IMAGE_INCLUDE_DIRS})
-    target_compile_definitions(libtsuki PUBLIC TSUKI_HAS_SDL_IMAGE)
-endif()
+# SDL3 extensions removed for minimal build
 
-if(SDL3_MIXER_FOUND)
-    target_include_directories(libtsuki PUBLIC ${SDL3_MIXER_INCLUDE_DIRS})
-    target_compile_definitions(libtsuki PUBLIC TSUKI_HAS_SDL_MIXER)
-endif()
-
-if(SDL3_TTF_FOUND)
-    target_include_directories(libtsuki PUBLIC ${SDL3_TTF_INCLUDE_DIRS})
-    target_compile_definitions(libtsuki PUBLIC TSUKI_HAS_SDL_TTF)
-endif()
-
-# Link libraries
+# Link libraries - all built from submodules
 target_link_libraries(libtsuki ${SDL3_LIBRARIES} ${LUA_LIBRARIES} ${LIBZIP_LINK_LIBS})
 
 # Link math library on Unix systems
 if(UNIX)
     target_link_libraries(libtsuki m)
-endif()
-
-if(SDL3_IMAGE_FOUND)
-    target_link_libraries(libtsuki ${SDL3_IMAGE_LIBRARIES})
-endif()
-
-if(SDL3_MIXER_FOUND)
-    target_link_libraries(libtsuki ${SDL3_MIXER_LIBRARIES})
-endif()
-
-if(SDL3_TTF_FOUND)
-    target_link_libraries(libtsuki ${SDL3_TTF_LIBRARIES})
 endif()
 
 add_executable(tsuki src/runtime/main.cpp)
@@ -203,21 +162,8 @@ target_link_libraries(tsuki_example libtsuki)
 
 # Compiler flags
 target_compile_options(libtsuki PRIVATE
-    ${SDL3_CFLAGS_OTHER}
     -Wall -Wextra -Wpedantic
 )
-
-if(SDL3_IMAGE_FOUND)
-    target_compile_options(libtsuki PRIVATE ${SDL3_IMAGE_CFLAGS_OTHER})
-endif()
-
-if(SDL3_MIXER_FOUND)
-    target_compile_options(libtsuki PRIVATE ${SDL3_MIXER_CFLAGS_OTHER})
-endif()
-
-if(SDL3_TTF_FOUND)
-    target_compile_options(libtsuki PRIVATE ${SDL3_TTF_CFLAGS_OTHER})
-endif()
 
 # Install targets
 install(TARGETS libtsuki

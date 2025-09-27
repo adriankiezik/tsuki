@@ -1,3 +1,9 @@
 [submodule "vendor/lua"]
 	path = vendor/lua
 	url = https://github.com/lua/lua.git
+[submodule "vendor/sdl3"]
+	path = vendor/sdl3
+	url = https://github.com/libsdl-org/SDL.git
+[submodule "vendor/libzip"]
+	path = vendor/libzip
+	url = https://github.com/nih-at/libzip.git
