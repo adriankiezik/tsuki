@@ -14,7 +14,10 @@ add_subdirectory(vendor/sdl3)
 
 # Lua - build from source files
 file(GLOB LUA_SOURCES vendor/lua/*.c)
-list(REMOVE_ITEM LUA_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/vendor/lua/lua.c ${CMAKE_CURRENT_SOURCE_DIR}/vendor/lua/luac.c)
+list(REMOVE_ITEM LUA_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/lua/lua.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/lua/luac.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/lua/onelua.c)
 add_library(lua STATIC ${LUA_SOURCES})
 set_target_properties(lua PROPERTIES LINKER_LANGUAGE C)
 target_include_directories(lua PUBLIC vendor/lua)
@@ -22,7 +25,11 @@ if(UNIX)
     target_link_libraries(lua m)
 endif()
 
-# libzip - minimal build
+# zlib - build from source
+add_subdirectory(vendor/zlib)
+
+# libzip - minimal build with our zlib
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "")
 set(ENABLE_COMMONCRYPTO OFF CACHE BOOL "")
 set(ENABLE_GNUTLS OFF CACHE BOOL "")
 set(ENABLE_MBEDTLS OFF CACHE BOOL "")
@@ -35,13 +42,17 @@ set(BUILD_TOOLS OFF CACHE BOOL "")
 set(BUILD_REGRESS OFF CACHE BOOL "")
 set(BUILD_EXAMPLES OFF CACHE BOOL "")
 set(BUILD_DOC OFF CACHE BOOL "")
+set(LIBZIP_DO_INSTALL OFF CACHE BOOL "")
+set(ZLIB_LIBRARY zlibstatic)
+set(ZLIB_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/zlib)
+set(ZLIB_FOUND TRUE)
 add_subdirectory(vendor/libzip)
 
 # Main library
 file(GLOB_RECURSE TSUKI_SOURCES src/*.cpp src/*.hpp)
 add_library(libtsuki STATIC ${TSUKI_SOURCES})
-target_include_directories(libtsuki PUBLIC include PRIVATE vendor/lua vendor/libzip/lib)
-target_link_libraries(libtsuki SDL3::SDL3-static lua zip)
+target_include_directories(libtsuki PUBLIC include PRIVATE vendor/lua vendor/libzip/lib vendor/zlib)
+target_link_libraries(libtsuki SDL3::SDL3-static lua zip zlibstatic)
 if(UNIX)
     target_link_libraries(libtsuki m)
 endif()
