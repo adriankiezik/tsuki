@@ -12,6 +12,7 @@ BUILD_SYSTEM="cmake"
 CLEAN=0
 RUN=0
 INSTALL=0
+BUILD_EXAMPLES=0
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -36,6 +37,10 @@ while [[ $# -gt 0 ]]; do
             INSTALL=1
             shift
             ;;
+        --examples)
+            BUILD_EXAMPLES=1
+            shift
+            ;;
         --help)
             echo "Usage: ./build.sh [options]"
             echo "Options:"
@@ -44,6 +49,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --clean     Clean before building"
             echo "  --run       Run after building"
             echo "  --install   Install tsuki globally (requires sudo)"
+            echo "  --examples  Build example executables (default: compile but don't build exe)"
             echo "  --help      Show this help message"
             exit 0
             ;;
@@ -100,7 +106,14 @@ if [ "$BUILD_SYSTEM" = "cmake" ]; then
     cd build
 
     echo -e "${YELLOW}Configuring with CMake (${BUILD_TYPE})...${NC}"
-    cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE .. || { echo -e "${RED}CMake configuration failed${NC}"; exit 1; }
+    CMAKE_ARGS="-DCMAKE_BUILD_TYPE=$BUILD_TYPE"
+    if [ $BUILD_EXAMPLES -eq 1 ]; then
+        CMAKE_ARGS="$CMAKE_ARGS -DTSUKI_BUILD_EXAMPLES=ON"
+        echo -e "${GREEN}Examples will be built as executables${NC}"
+    else
+        echo -e "${YELLOW}Examples will be compiled for syntax checking only${NC}"
+    fi
+    cmake $CMAKE_ARGS .. || { echo -e "${RED}CMake configuration failed${NC}"; exit 1; }
 
     echo -e "${YELLOW}Building...${NC}"
     cmake --build . -j$(nproc) || { echo -e "${RED}Build failed${NC}"; exit 1; }

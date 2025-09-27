@@ -5,6 +5,9 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Build options
+option(TSUKI_BUILD_EXAMPLES "Build example executables" OFF)
+
 # Generate version header from template
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/include/tsuki/version.hpp.in"
@@ -77,12 +80,33 @@ else()
     target_compile_options(libtsuki PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-# Executables
+# Main executable
 add_executable(tsuki src/runtime/main.cpp)
 target_link_libraries(tsuki libtsuki)
 
-add_executable(tsuki_example examples/main.cpp)
-target_link_libraries(tsuki_example libtsuki)
+# Example source files (always compiled for syntax checking)
+file(GLOB_RECURSE EXAMPLE_SOURCES examples/*.cpp examples/*.hpp)
+add_library(examples_check OBJECT ${EXAMPLE_SOURCES})
+target_include_directories(examples_check PRIVATE
+    include
+    ${CMAKE_CURRENT_BINARY_DIR}/include
+    vendor/lua
+    vendor/libzip/lib
+    vendor/zlib
+)
+target_compile_options(examples_check PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+    $<$<CXX_COMPILER_ID:MSVC>:/W4>
+)
+
+# Example executable (only built when requested)
+if(TSUKI_BUILD_EXAMPLES)
+    add_executable(tsuki_example examples/minimal_cpp/main.cpp)
+    target_link_libraries(tsuki_example libtsuki)
+
+    # Install example executable if built
+    install(TARGETS tsuki_example RUNTIME DESTINATION bin)
+endif()
 
 # Install
 install(TARGETS libtsuki ARCHIVE DESTINATION lib)
