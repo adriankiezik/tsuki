@@ -2,6 +2,11 @@
 #include <algorithm>
 #include <cmath>
 
+// Define M_PI for Windows MSVC
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 namespace tsuki {
 
 // Image implementation
@@ -289,7 +294,7 @@ void Graphics::draw(const Image& image, float x, float y, float rotation, float 
     SDL_FRect dest = {x - ox * sx, y - oy * sy, image.getWidth() * sx, image.getHeight() * sy};
     SDL_FPoint center = {ox * sx, oy * sy};
 
-    SDL_RenderTextureRotated(renderer_, image.getTexture(), nullptr, &dest, rotation * 180.0f / M_PI, &center, SDL_FLIP_NONE);
+    SDL_RenderTextureRotated(renderer_, image.getTexture(), nullptr, &dest, &center, rotation * 180.0f / M_PI, SDL_FLIP_NONE);
 }
 
 void Graphics::print(const std::string& text, float x, float y) {
