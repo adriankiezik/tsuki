@@ -4,7 +4,12 @@
 #include <filesystem>
 #include <fstream>
 #include <cstring>
-#include <unistd.h>
+#ifdef _WIN32
+    #include <process.h>
+    #define getpid _getpid
+#else
+    #include <unistd.h>
+#endif
 
 void printUsage(const char* program_name) {
     std::cout << "Tsuki Game Engine v1.0.0\n";
@@ -63,7 +68,7 @@ int main(int argc, char* argv[]) {
             std::cout << "Detected embedded game in executable" << std::endl;
 
             // Extract to temporary directory
-            std::string temp_dir = "/tmp/tsuki_fused_" + std::to_string(getpid());
+            std::string temp_dir = std::filesystem::temp_directory_path() / ("tsuki_fused_" + std::to_string(getpid()));
             if (!tsuki::Packaging::extractFromFusedExecutable(argv[0], temp_dir)) {
                 std::cerr << "Failed to extract embedded game!" << std::endl;
                 return 1;
@@ -178,7 +183,7 @@ int main(int argc, char* argv[]) {
         std::cout << "Loading .tsuki file: " << game_path << std::endl;
 
         // Create temporary directory for extraction
-        std::string temp_dir = "/tmp/tsuki_" + std::to_string(getpid());
+        std::string temp_dir = std::filesystem::temp_directory_path() / ("tsuki_" + std::to_string(getpid()));
         if (!tsuki::Packaging::extractTsukiFile(game_path, temp_dir)) {
             std::cerr << "Failed to extract .tsuki file" << std::endl;
             return 1;
