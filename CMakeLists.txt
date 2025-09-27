@@ -107,6 +107,8 @@ message(STATUS "Lua include directory: ${LUA_INCLUDE_DIR}")
 # Find libzip for .tsuki file support
 if(NOT WIN32)
     pkg_check_modules(LIBZIP REQUIRED libzip)
+    # Use the full link libraries for proper linking
+    set(LIBZIP_LINK_LIBS ${LIBZIP_LINK_LIBRARIES})
 else()
     # Manual detection for Windows
     find_path(LIBZIP_INCLUDE_DIRS zip.h
@@ -124,6 +126,7 @@ else()
         message(FATAL_ERROR "libzip not found. Please install via vcpkg or set CMAKE_PREFIX_PATH.")
     endif()
 
+    set(LIBZIP_LINK_LIBS ${LIBZIP_LIBRARIES})
     message(STATUS "Found libzip include: ${LIBZIP_INCLUDE_DIRS}")
     message(STATUS "Found libzip library: ${LIBZIP_LIBRARIES}")
 endif()
@@ -172,7 +175,7 @@ if(SDL3_TTF_FOUND)
 endif()
 
 # Link libraries
-target_link_libraries(libtsuki ${SDL3_LIBRARIES} ${LUA_LIBRARIES} ${LIBZIP_LIBRARIES})
+target_link_libraries(libtsuki ${SDL3_LIBRARIES} ${LUA_LIBRARIES} ${LIBZIP_LINK_LIBS})
 
 # Link math library on Unix systems
 if(UNIX)
@@ -192,7 +195,7 @@ if(SDL3_TTF_FOUND)
 endif()
 
 add_executable(tsuki src/runtime/main.cpp)
-target_link_libraries(tsuki libtsuki ${LIBZIP_LIBRARIES})
+target_link_libraries(tsuki libtsuki ${LIBZIP_LINK_LIBS})
 
 # Example executable
 add_executable(tsuki_example examples/main.cpp)
