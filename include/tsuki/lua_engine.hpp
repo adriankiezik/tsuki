@@ -4,9 +4,15 @@
 #include <memory>
 
 extern "C" {
-#include <lua.h>
-#include <lualib.h>
-#include <lauxlib.h>
+#ifdef __APPLE__
+    #include <lua5.4/lua.h>
+    #include <lua5.4/lualib.h>
+    #include <lua5.4/lauxlib.h>
+#else
+    #include <lua.h>
+    #include <lualib.h>
+    #include <lauxlib.h>
+#endif
 }
 
 namespace tsuki {
