@@ -16,6 +16,11 @@ on:
         type: boolean
         default: true
 
+# Grant necessary permissions for creating releases
+permissions:
+  contents: write
+  packages: read
+
 jobs:
   # Build using same optimized steps as build.yml (but skip the conditional check for releases)
   build:
