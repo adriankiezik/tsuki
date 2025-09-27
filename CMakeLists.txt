@@ -5,6 +5,13 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Generate version header from template
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/tsuki/version.hpp.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/include/tsuki/version.hpp"
+    @ONLY
+)
+
 # SDL3 - minimal static build
 set(SDL_SHARED OFF CACHE BOOL "")
 set(SDL_STATIC ON CACHE BOOL "")
@@ -51,7 +58,15 @@ add_subdirectory(vendor/libzip)
 # Main library
 file(GLOB_RECURSE TSUKI_SOURCES src/*.cpp src/*.hpp)
 add_library(libtsuki STATIC ${TSUKI_SOURCES})
-target_include_directories(libtsuki PUBLIC include PRIVATE vendor/lua vendor/libzip/lib vendor/zlib)
+target_include_directories(libtsuki
+    PUBLIC
+        include
+        ${CMAKE_CURRENT_BINARY_DIR}/include
+    PRIVATE
+        vendor/lua
+        vendor/libzip/lib
+        vendor/zlib
+)
 target_link_libraries(libtsuki SDL3::SDL3-static lua zip zlibstatic)
 if(UNIX)
     target_link_libraries(libtsuki m)

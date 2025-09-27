@@ -1,4 +1,5 @@
 #include "tsuki/system.hpp"
+#include "tsuki/version.hpp"
 #include <SDL3/SDL.h>
 
 namespace tsuki {
@@ -17,7 +18,7 @@ std::string System::getProcessorCount() const {
 }
 
 std::string System::getVersion() const {
-    return "Tsuki Engine 1.0.0";
+    return std::string(PROJECT_NAME) + " " + VERSION;
 }
 
 int System::getPowerInfo() const {
