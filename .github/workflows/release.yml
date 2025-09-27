@@ -17,9 +17,15 @@ on:
         default: true
 
 jobs:
-  build-and-release:
-    name: Build and Release ${{ matrix.os }}
+  # Reuse the optimized build workflow
+  build:
+    uses: ./.github/workflows/build.yml
+
+  # Bundle and release the artifacts
+  release:
+    name: Create Release ${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
+    needs: build
     strategy:
       matrix:
         include:
@@ -27,21 +33,21 @@ jobs:
             platform: linux
             arch: x64
             binary_name: tsuki
-            bundle_script: bundle-linux.sh
           - os: macos-latest
             platform: macos
             arch: x64
             binary_name: tsuki
-            bundle_script: bundle-macos.sh
           - os: windows-latest
             platform: windows
             arch: x64
             binary_name: tsuki.exe
-            bundle_script: bundle-windows.ps1
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 1
 
     - name: Set version
       shell: bash
@@ -52,178 +58,44 @@ jobs:
           echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
         fi
 
-    - name: Cache SDL3 build (Ubuntu)
-      if: matrix.os == 'ubuntu-latest'
-      uses: actions/cache@v4
-      id: cache-sdl3-ubuntu
+    # Download build artifacts from the build job
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
       with:
-        path: /usr/local
-        key: ${{ runner.os }}-sdl3-v2-${{ hashFiles('.github/workflows/release.yml') }}
-
-    - name: Install dependencies (Ubuntu)
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          build-essential \
-          cmake \
-          pkg-config \
-          liblua5.4-dev \
-          libzip-dev \
-          curl \
-          git \
-          zip \
-          patchelf \
-          libx11-dev \
-          libxext-dev \
-          libxrandr-dev \
-          libxcursor-dev \
-          libxfixes-dev \
-          libxi-dev \
-          libxss-dev \
-          libgl1-mesa-dev \
-          libglu1-mesa-dev \
-          libasound2-dev \
-          libpulse-dev \
-          libudev-dev \
-          libdbus-1-dev \
-          libwayland-dev \
-          libxkbcommon-dev \
-          libwayland-cursor0 \
-          libwayland-egl1-mesa \
-          wayland-protocols
-
-    - name: Build SDL3 from source (Ubuntu)
-      if: matrix.os == 'ubuntu-latest' && steps.cache-sdl3-ubuntu.outputs.cache-hit != 'true'
-      run: |
-        # Install SDL3 from source
-        git clone https://github.com/libsdl-org/SDL.git --branch main --depth 1
-        cd SDL
-        mkdir build && cd build
-        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local
-        make -j$(nproc)
-        sudo make install
-        sudo ldconfig
-
-    - name: Cache SDL3 build (macOS)
-      if: matrix.os == 'macos-latest'
-      uses: actions/cache@v4
-      id: cache-sdl3-macos
-      with:
-        path: /usr/local
-        key: ${{ runner.os }}-sdl3-v2-${{ hashFiles('.github/workflows/release.yml') }}
-
-    - name: Install dependencies (macOS)
-      if: matrix.os == 'macos-latest'
-      run: |
-        brew update
-        brew install cmake pkg-config lua@5.4 libzip curl git zip
-
-    - name: Set Lua environment variables (macOS)
-      if: matrix.os == 'macos-latest'
-      run: |
-        # Set explicit paths for Lua on macOS
-        echo "LUA_INCLUDE_DIR=/opt/homebrew/include/lua@5.4" >> $GITHUB_ENV
-        echo "LUA_LIBRARY_PATH=/opt/homebrew/lib" >> $GITHUB_ENV
-        echo "PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-
-    - name: Build SDL3 from source (macOS)
-      if: matrix.os == 'macos-latest' && steps.cache-sdl3-macos.outputs.cache-hit != 'true'
-      run: |
-        # Install SDL3 from source
-        git clone https://github.com/libsdl-org/SDL.git --branch main --depth 1
-        cd SDL
-        mkdir build && cd build
-        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local
-        make -j$(sysctl -n hw.ncpu)
-        sudo make install
-
-    - name: Install dependencies (Windows)
-      if: matrix.os == 'windows-latest'
-      shell: powershell
-      run: |
-        # Install vcpkg
-        git clone https://github.com/Microsoft/vcpkg.git
-        cd vcpkg
-        .\bootstrap-vcpkg.bat
-        .\vcpkg install lua:x64-windows libzip:x64-windows curl:x64-windows
-
-        # Install SDL3 from source
-        git clone https://github.com/libsdl-org/SDL.git --branch main --depth 1
-        cd SDL
-        mkdir build
-        cd build
-        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../vcpkg/scripts/buildsystems/vcpkg.cmake
-        cmake --build . --config Release
-        cmake --install . --config Release
-
-    - name: Build
-      shell: bash
-      run: |
-        mkdir build
-        cd build
-        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-          cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../vcpkg/scripts/buildsystems/vcpkg.cmake
-          cmake --build . --config Release -j
-        else
-          cmake .. -DCMAKE_BUILD_TYPE=Release
-          cmake --build . -j
-        fi
+        name: tsuki-${{ matrix.platform }}-${{ matrix.arch }}-build
+        path: ./build/
 
     - name: Create bundle directory
       shell: bash
+      run: mkdir -p release-bundle
+
+    - name: Bundle executables
+      shell: bash
       run: |
-        mkdir -p release-bundle
+        # Find and copy the built executable
+        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+          # Windows build output is in Release subdirectory
+          find build/ -name "*.exe" -type f -exec cp {} release-bundle/ \;
+        else
+          # Linux/macOS executables (without extension)
+          find build/ -name "tsuki" -type f -executable -exec cp {} release-bundle/ \;
+          find build/ -name "tsuki_example" -type f -executable -exec cp {} release-bundle/ \; || true
+          chmod +x release-bundle/tsuki*
+        fi
 
-    - name: Bundle Linux
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        # Copy main executable
-        cp build/tsuki release-bundle/
-
-        # Copy required libraries
-        mkdir -p release-bundle/lib
-
-        # Copy SDL3 libraries
-        cp /usr/local/lib/libSDL3*.so* release-bundle/lib/ || true
-
-        # Copy system libraries that might not be available everywhere
-        ldd build/tsuki | grep "=>" | awk '{print $3}' | grep -E "(lua|zip)" | xargs -I {} cp {} release-bundle/lib/ || true
-
-        # Create launcher script
-        cat > release-bundle/tsuki.sh << 'EOF'
-        #!/bin/bash
-        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-        export LD_LIBRARY_PATH="$SCRIPT_DIR/lib:$LD_LIBRARY_PATH"
-        exec "$SCRIPT_DIR/tsuki" "$@"
-        EOF
-        chmod +x release-bundle/tsuki.sh
-
-        # Make main binary executable
-        chmod +x release-bundle/tsuki
-
-    - name: Bundle macOS
+    - name: Create macOS app bundle
       if: matrix.os == 'macos-latest'
+      shell: bash
       run: |
-        # Create app bundle structure
+        # Create a simple .app bundle structure
         mkdir -p "release-bundle/Tsuki.app/Contents/MacOS"
         mkdir -p "release-bundle/Tsuki.app/Contents/Resources"
 
-        # Copy executable
-        cp build/tsuki "release-bundle/Tsuki.app/Contents/MacOS/"
+        # Copy executable to app bundle
+        cp release-bundle/tsuki "release-bundle/Tsuki.app/Contents/MacOS/"
 
-        # Copy libraries using otool and install_name_tool
-        libs=$(otool -L build/tsuki | grep -E "(SDL|lua|zip)" | awk '{print $1}' | grep -v "@executable_path")
-        for lib in $libs; do
-          if [[ -f "$lib" ]]; then
-            cp "$lib" "release-bundle/Tsuki.app/Contents/MacOS/"
-            libname=$(basename "$lib")
-            install_name_tool -change "$lib" "@executable_path/$libname" "release-bundle/Tsuki.app/Contents/MacOS/tsuki"
-          fi
-        done
-
-        # Create Info.plist
-        cat > "release-bundle/Tsuki.app/Contents/Info.plist" << 'EOF'
+        # Create basic Info.plist
+        cat > "release-bundle/Tsuki.app/Contents/Info.plist" << EOF
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
         <plist version="1.0">
@@ -242,53 +114,69 @@ jobs:
         </plist>
         EOF
 
-        # Also create standalone binary for CLI usage
-        cp build/tsuki release-bundle/
-
-    - name: Bundle Windows
-      if: matrix.os == 'windows-latest'
-      shell: powershell
+    - name: Create README
+      shell: bash
       run: |
-        # Copy main executable
-        Copy-Item "build/Release/tsuki.exe" "release-bundle/"
+        cat > release-bundle/README.txt << 'EOF'
+        Tsuki Engine ${{ env.VERSION }}
+        ============================
 
-        # Copy SDL3 DLLs
-        $sdlPath = "SDL/build/Release"
-        if (Test-Path "$sdlPath/SDL3.dll") {
-          Copy-Item "$sdlPath/SDL3.dll" "release-bundle/"
-        }
+        Cross-platform game engine for creating interactive applications.
 
-        # Copy vcpkg DLLs
-        $vcpkgBin = "vcpkg/installed/x64-windows/bin"
-        if (Test-Path $vcpkgBin) {
-          Get-ChildItem "$vcpkgBin/*.dll" | ForEach-Object {
-            Copy-Item $_.FullName "release-bundle/"
-          }
-        }
+        Quick Start:
+        -----------
 
-        # Copy Windows runtime DLLs (if needed)
-        # Note: These might need to be installed separately or bundled differently
+        Linux/macOS:   ./tsuki --help
+        Windows:       tsuki.exe --help
+        macOS App:     Open Tsuki.app or use ./tsuki for CLI
+
+        Visit https://github.com/adriankiezik/tsuki for documentation.
+        EOF
 
     - name: Create release archive
       shell: bash
       run: |
         cd release-bundle
         if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-          7z a "../tsuki-${{ matrix.platform }}-${{ matrix.arch }}.zip" *
+          # Use PowerShell's Compress-Archive for Windows
+          powershell -Command "Compress-Archive -Path * -DestinationPath '../tsuki-${{ env.VERSION }}-${{ matrix.platform }}-${{ matrix.arch }}.zip'"
         else
-          zip -r "../tsuki-${{ matrix.platform }}-${{ matrix.arch }}.zip" *
+          zip -r "../tsuki-${{ env.VERSION }}-${{ matrix.platform }}-${{ matrix.arch }}.zip" .
         fi
 
     - name: Upload release artifact
       uses: actions/upload-artifact@v4
       with:
-        name: tsuki-${{ matrix.platform }}-${{ matrix.arch }}
-        path: tsuki-${{ matrix.platform }}-${{ matrix.arch }}.zip
+        name: tsuki-${{ env.VERSION }}-${{ matrix.platform }}-${{ matrix.arch }}
+        path: tsuki-${{ env.VERSION }}-${{ matrix.platform }}-${{ matrix.arch }}.zip
         retention-days: 30
 
-    - name: Upload to release
-      if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'true')
-      uses: softprops/action-gh-release@v1
+  # Create GitHub release (runs after all platforms are bundled)
+  create-github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: release
+    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'true')
+
+    steps:
+    - name: Set version
+      shell: bash
+      run: |
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+        else
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+        fi
+
+    - name: Download all release artifacts
+      uses: actions/download-artifact@v4
+      with:
+        pattern: tsuki-${{ env.VERSION }}-*
+        path: ./release-assets/
+        merge-multiple: true
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ env.VERSION }}
         name: Tsuki Engine ${{ env.VERSION }}
@@ -297,36 +185,29 @@ jobs:
 
           Cross-platform game engine binaries for Linux, macOS, and Windows.
 
-          ### Installation
+          ### 📦 Downloads
 
-          1. Download the appropriate binary for your platform
-          2. Extract the archive
-          3. Run `tsuki --help` to get started
+          Choose the appropriate binary for your platform:
+          - **Linux**: `tsuki-${{ env.VERSION }}-linux-x64.zip`
+          - **macOS**: `tsuki-${{ env.VERSION }}-macos-x64.zip`
+          - **Windows**: `tsuki-${{ env.VERSION }}-windows-x64.zip`
 
-          ### Usage
+          ### 🚀 Quick Start
 
-          ```bash
-          # Run a game from directory
-          ./tsuki mygame/
+          1. Download and extract the archive for your platform
+          2. Run `./tsuki --help` (or `tsuki.exe --help` on Windows)
+          3. Check out the [documentation](https://github.com/adriankiezik/tsuki) for examples
 
-          # Package a game
-          ./tsuki --package mygame/ mygame.tsuki
+          ### 📋 What's Included
 
-          # Create standalone executable
-          ./tsuki --fuse mygame.tsuki mygame_standalone
-
-          # Cross-platform fusion (Linux to Windows)
-          ./tsuki --fuse mygame.tsuki mygame.exe --target windows
-          ```
-
-          ### Files Included
-
-          - **Linux**: `tsuki` binary with bundled libraries
-          - **macOS**: `Tsuki.app` bundle + standalone `tsuki` binary
+          - **Linux**: `tsuki` binary (statically linked)
+          - **macOS**: `tsuki` CLI + `Tsuki.app` bundle
           - **Windows**: `tsuki.exe` with required DLLs
-        files: |
-          tsuki-${{ matrix.platform }}-${{ matrix.arch }}.zip
+
+          Built with the optimized CI pipeline for reliable cross-platform compatibility.
+        files: ./release-assets/*.zip
         draft: false
         prerelease: ${{ contains(env.VERSION, 'alpha') || contains(env.VERSION, 'beta') || contains(env.VERSION, 'rc') }}
+        generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
