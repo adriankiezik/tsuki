@@ -33,58 +33,72 @@ else()
     message(STATUS "Found SDL3 library: ${SDL3_LIBRARIES}")
 endif()
 
-# Find Lua (required for scripting)
-if(NOT WIN32)
-    # Use pkg-config on Unix systems
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(LUA REQUIRED lua5.4)
-else()
-    # Manual detection for Windows
-    find_package(Lua REQUIRED)
-    if(LUA_FOUND)
-        set(LUA_LIBRARIES ${LUA_LIBRARIES})
-        set(LUA_INCLUDE_DIRS ${LUA_INCLUDE_DIR})
-    endif()
-endif()
+# Build Lua from vendor directory (no external dependencies needed)
+set(LUA_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/lua)
 
-# Also find the lua library explicitly as fallback
-find_library(LUA_LIBRARY NAMES lua5.4 lua lua54)
-find_path(LUA_INCLUDE_DIR lua.h
-    PATH_SUFFIXES lua5.4 lua lua54 include
-    PATHS
-        ${LUA_INCLUDE_DIRS}
-        /opt/homebrew/include
-        /opt/homebrew/include/lua@5.4
-        /usr/local/include
-        /usr/local/include/lua@5.4
-        /usr/local/include/lua5.4
-        /usr/include
-        /usr/include/lua5.4
-        ${LUA_INCLUDE_DIR}
-    NO_DEFAULT_PATH
+# Lua source files (core library)
+set(LUA_CORE_SOURCES
+    ${LUA_SOURCE_DIR}/lapi.c
+    ${LUA_SOURCE_DIR}/lcode.c
+    ${LUA_SOURCE_DIR}/lctype.c
+    ${LUA_SOURCE_DIR}/ldebug.c
+    ${LUA_SOURCE_DIR}/ldo.c
+    ${LUA_SOURCE_DIR}/ldump.c
+    ${LUA_SOURCE_DIR}/lfunc.c
+    ${LUA_SOURCE_DIR}/lgc.c
+    ${LUA_SOURCE_DIR}/llex.c
+    ${LUA_SOURCE_DIR}/lmem.c
+    ${LUA_SOURCE_DIR}/lobject.c
+    ${LUA_SOURCE_DIR}/lopcodes.c
+    ${LUA_SOURCE_DIR}/lparser.c
+    ${LUA_SOURCE_DIR}/lstate.c
+    ${LUA_SOURCE_DIR}/lstring.c
+    ${LUA_SOURCE_DIR}/ltable.c
+    ${LUA_SOURCE_DIR}/ltm.c
+    ${LUA_SOURCE_DIR}/lundump.c
+    ${LUA_SOURCE_DIR}/lvm.c
+    ${LUA_SOURCE_DIR}/lzio.c
 )
 
-# Fallback: try default paths if not found
-if(NOT LUA_INCLUDE_DIR)
-    find_path(LUA_INCLUDE_DIR lua.h
-        PATH_SUFFIXES lua5.4 lua lua54 include
-    )
+# Lua library sources (standard libraries)
+set(LUA_LIB_SOURCES
+    ${LUA_SOURCE_DIR}/lauxlib.c
+    ${LUA_SOURCE_DIR}/lbaselib.c
+    ${LUA_SOURCE_DIR}/lcorolib.c
+    ${LUA_SOURCE_DIR}/ldblib.c
+    ${LUA_SOURCE_DIR}/liolib.c
+    ${LUA_SOURCE_DIR}/lmathlib.c
+    ${LUA_SOURCE_DIR}/loslib.c
+    ${LUA_SOURCE_DIR}/lstrlib.c
+    ${LUA_SOURCE_DIR}/ltablib.c
+    ${LUA_SOURCE_DIR}/lutf8lib.c
+    ${LUA_SOURCE_DIR}/loadlib.c
+    ${LUA_SOURCE_DIR}/linit.c
+)
+
+# Create Lua static library
+add_library(lua STATIC ${LUA_CORE_SOURCES} ${LUA_LIB_SOURCES})
+
+# Set Lua include directory
+target_include_directories(lua PUBLIC ${LUA_SOURCE_DIR})
+
+# Set platform-specific compile definitions
+if(WIN32)
+    target_compile_definitions(lua PRIVATE LUA_BUILD_AS_DLL=0)
 endif()
 
-if(NOT LUA_LIBRARY)
-    message(FATAL_ERROR "Lua library not found")
+# Link math library on Unix systems
+if(UNIX)
+    target_link_libraries(lua m)
 endif()
 
-if(NOT LUA_INCLUDE_DIR)
-    message(FATAL_ERROR "Lua headers not found")
-endif()
+# Set variables for the rest of the build system
+set(LUA_LIBRARIES lua)
+set(LUA_INCLUDE_DIRS ${LUA_SOURCE_DIR})
+set(LUA_INCLUDE_DIR ${LUA_SOURCE_DIR})
 
-message(STATUS "Found Lua library: ${LUA_LIBRARY}")
-message(STATUS "Found Lua include: ${LUA_INCLUDE_DIR}")
-if(NOT WIN32)
-    message(STATUS "Lua pkg-config libraries: ${LUA_LIBRARIES}")
-    message(STATUS "Lua pkg-config include dirs: ${LUA_INCLUDE_DIRS}")
-endif()
+message(STATUS "Building Lua from vendor directory: ${LUA_SOURCE_DIR}")
+message(STATUS "Lua include directory: ${LUA_INCLUDE_DIR}")
 
 
 # Find libzip for .tsuki file support
@@ -155,7 +169,12 @@ if(SDL3_TTF_FOUND)
 endif()
 
 # Link libraries
-target_link_libraries(libtsuki ${SDL3_LIBRARIES} ${LUA_LIBRARY} ${LUA_LIBRARIES} ${LIBZIP_LIBRARIES} m)
+target_link_libraries(libtsuki ${SDL3_LIBRARIES} ${LUA_LIBRARIES} ${LIBZIP_LIBRARIES})
+
+# Link math library on Unix systems
+if(UNIX)
+    target_link_libraries(libtsuki m)
+endif()
 
 if(SDL3_IMAGE_FOUND)
     target_link_libraries(libtsuki ${SDL3_IMAGE_LIBRARIES})
