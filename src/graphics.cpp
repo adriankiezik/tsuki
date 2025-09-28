@@ -244,7 +244,9 @@ void Graphics::arc(DrawMode mode, float x, float y, float radius, float angle1, 
     setColor(current_color_);
 
     float angle_range = angle2 - angle1;
-    int actual_segments = std::max(1, int(segments * std::abs(angle_range) / (2.0f * M_PI)));
+    float abs_angle_range = std::fabs(angle_range);
+    int calculated_segments = static_cast<int>(segments * abs_angle_range / (2.0f * M_PI));
+    int actual_segments = std::max(1, calculated_segments);
 
     if (mode == DrawMode::Fill) {
         for (int i = 0; i < actual_segments; ++i) {
