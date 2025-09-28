@@ -1,6 +1,8 @@
 #include "tsuki/lua_bindings.hpp"
 #include "tsuki/tsuki.hpp"
+#include "tsuki/debug_utils.hpp"
 #include <iostream>
+#include <cstring>
 
 namespace tsuki {
 
@@ -18,6 +20,7 @@ void LuaBindings::registerAll(lua_State* L, Engine* engine) {
     registerKeyboard(L);
     registerMouse(L);
     registerWindow(L);
+    registerDebug(L);
 }
 
 void LuaBindings::registerGraphics(lua_State* L) {
@@ -234,6 +237,194 @@ int LuaBindings::window_setTitle(lua_State* L) {
 
     const char* title = luaL_checkstring(L, 1);
     engine_instance->getWindow().setTitle(title);
+    return 0;
+}
+
+void LuaBindings::registerDebug(lua_State* L) {
+    lua_getglobal(L, "tsuki");
+
+    // Create debug table
+    lua_newtable(L);
+
+    setFunction(L, "stackTrace", debug_stackTrace);
+    setFunction(L, "printStack", debug_printStack);
+    setFunction(L, "getInfo", debug_getInfo);
+    setFunction(L, "prettyInfo", debug_prettyInfo);
+
+    lua_setfield(L, -2, "debug");
+    lua_pop(L, 1);
+}
+
+// Debug functions
+int LuaBindings::debug_stackTrace(lua_State* L) {
+    // Get the message parameter if provided
+    const char* msg = luaL_optstring(L, 1, "");
+
+    lua_getglobal(L, "debug");
+    if (!lua_isnil(L, -1)) {
+        lua_getfield(L, -1, "traceback");
+        if (lua_isfunction(L, -1)) {
+            // Push the message if provided
+            if (strlen(msg) > 0) {
+                lua_pushstring(L, msg);
+                lua_call(L, 1, 1);
+            } else {
+                lua_call(L, 0, 1);
+            }
+
+            if (lua_isstring(L, -1)) {
+                const char* trace = lua_tostring(L, -1);
+                // Copy the string to avoid memory issues
+                std::string trace_copy(trace);
+                lua_pop(L, 2); // Remove trace result and debug table
+                lua_pushstring(L, trace_copy.c_str());
+                return 1;
+            }
+            lua_pop(L, 1); // Remove non-string result
+        }
+        lua_pop(L, 1); // Remove debug table
+    } else {
+        lua_pop(L, 1); // Remove nil
+    }
+
+    lua_pushstring(L, "Stack trace not available");
+    return 1;
+}
+
+int LuaBindings::debug_printStack(lua_State* L) {
+    int top = lua_gettop(L);
+
+    DebugPrinter::printHeader(fmt::format("📚 LUA STACK (size: {})", top), fmt::color::purple);
+
+    for (int i = 1; i <= top; i++) {
+        int type = lua_type(L, i);
+        std::string typeName = lua_typename(L, type);
+        std::string value;
+
+        switch (type) {
+            case LUA_TNUMBER:
+                value = fmt::format("{}", lua_tonumber(L, i));
+                break;
+            case LUA_TSTRING:
+                value = fmt::format("\"{}\"", lua_tostring(L, i));
+                break;
+            case LUA_TBOOLEAN:
+                value = lua_toboolean(L, i) ? "true" : "false";
+                break;
+            case LUA_TNIL:
+                value = "nil";
+                break;
+            default:
+                value = fmt::format("{:p}", lua_topointer(L, i));
+                break;
+        }
+
+        DebugPrinter::printKeyValue(fmt::format("{} ({})", i, typeName), value, fmt::color::cyan, fmt::color::white);
+    }
+
+    fmt::print("\n");
+    return 0;
+}
+
+int LuaBindings::debug_getInfo(lua_State* L) {
+    const char* what = luaL_optstring(L, 1, "Slnf");
+    int level = luaL_optinteger(L, 2, 1);
+
+    lua_Debug ar;
+    memset(&ar, 0, sizeof(ar)); // Initialize the structure
+
+    if (lua_getstack(L, level, &ar)) {
+        if (lua_getinfo(L, what, &ar)) {
+            lua_newtable(L);
+
+            // Source file
+            if (ar.source && strlen(ar.source) > 0) {
+                lua_pushstring(L, ar.source);
+                lua_setfield(L, -2, "source");
+            } else {
+                lua_pushstring(L, "unknown");
+                lua_setfield(L, -2, "source");
+            }
+
+            // Line number
+            if (ar.currentline >= 0) {
+                lua_pushinteger(L, ar.currentline);
+                lua_setfield(L, -2, "line");
+            } else {
+                lua_pushinteger(L, -1);
+                lua_setfield(L, -2, "line");
+            }
+
+            // Function name (be careful with memory)
+            if (ar.name && strlen(ar.name) > 0) {
+                lua_pushstring(L, ar.name);
+                lua_setfield(L, -2, "name");
+            } else {
+                lua_pushstring(L, "anonymous");
+                lua_setfield(L, -2, "name");
+            }
+
+            // Name type
+            if (ar.namewhat && strlen(ar.namewhat) > 0) {
+                lua_pushstring(L, ar.namewhat);
+                lua_setfield(L, -2, "namewhat");
+            } else {
+                lua_pushstring(L, "");
+                lua_setfield(L, -2, "namewhat");
+            }
+
+            // Function type
+            if (ar.what && strlen(ar.what) > 0) {
+                lua_pushstring(L, ar.what);
+                lua_setfield(L, -2, "what");
+            } else {
+                lua_pushstring(L, "unknown");
+                lua_setfield(L, -2, "what");
+            }
+
+            return 1;
+        }
+    }
+
+    lua_pushnil(L);
+    return 1;
+}
+
+int LuaBindings::debug_prettyInfo(lua_State* L) {
+    int level = luaL_optinteger(L, 1, 1);
+
+    // Get function info
+    lua_Debug ar;
+    memset(&ar, 0, sizeof(ar));
+
+    if (lua_getstack(L, level, &ar)) {
+        if (lua_getinfo(L, "Slnf", &ar)) {
+            // Compact one-line format: func@file:line
+            std::string funcName = ar.name ? ar.name : "anonymous";
+            std::string source = ar.source ? DebugPrinter::cleanSourcePath(ar.source) : "?";
+            int line = ar.currentline >= 0 ? ar.currentline : 0;
+
+            fmt::print(fg(fmt::color::cyan), "Debug: ");
+            fmt::print(fg(fmt::color::white), "{}@{}:{}\n", funcName, source, line);
+
+            // Get stack trace - only show Lua lines
+            lua_getglobal(L, "debug");
+            if (!lua_isnil(L, -1)) {
+                lua_getfield(L, -1, "traceback");
+                if (lua_isfunction(L, -1)) {
+                    lua_call(L, 0, 1);
+                    if (lua_isstring(L, -1)) {
+                        DebugPrinter::printStackTrace(lua_tostring(L, -1));
+                    }
+                    lua_pop(L, 1);
+                }
+                lua_pop(L, 1);
+            } else {
+                lua_pop(L, 1);
+            }
+        }
+    }
+
     return 0;
 }
 

@@ -540,7 +540,7 @@ bool Packaging::checkRemoteVersionNewer(const std::string& url, const std::strin
     }
     
     // Get local file modification time
-    auto local_time = std::filesystem::last_write_time(cached_path);
+    (void)std::filesystem::last_write_time(cached_path);
     
     // Use curl to get remote file headers (Last-Modified or ETag)
     std::string temp_file = getCacheDirectory() + "/temp_headers";

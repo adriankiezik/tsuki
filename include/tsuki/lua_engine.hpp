@@ -47,6 +47,7 @@ private:
 
     void setError(const std::string& error);
     bool callLuaFunction(const std::string& function_name, int args = 0, int results = 0);
+    bool callLuaFunction(const std::string& function_name, const std::string& display_name, int args = 0, int results = 0);
 };
 
 } // namespace tsuki

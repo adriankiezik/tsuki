@@ -43,6 +43,13 @@ private:
     static int window_getHeight(lua_State* L);
     static int window_setTitle(lua_State* L);
 
+    // Debug bindings
+    static void registerDebug(lua_State* L);
+    static int debug_stackTrace(lua_State* L);
+    static int debug_printStack(lua_State* L);
+    static int debug_getInfo(lua_State* L);
+    static int debug_prettyInfo(lua_State* L);
+
     // Utility functions
     static void createTable(lua_State* L, const char* name);
     static void setFunction(lua_State* L, const char* name, lua_CFunction func);

@@ -54,12 +54,9 @@ int runGame(const std::string& game_path) {
         return 1;
     }
 
-    std::cout << "Loading Tsuki game from: " << game_path << std::endl;
-
     // Run the Lua game
     engine.runLuaGame(game_path);
 
-    std::cout << "Game finished!" << std::endl;
     return 0;
 }
 

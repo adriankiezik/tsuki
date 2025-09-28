@@ -248,22 +248,44 @@ void Engine::runLuaGame(const std::string& game_path) {
 
     // Main game loop
     while (running_ && !window_.shouldClose()) {
-        timer_.update();
-        double dt = timer_.getDelta();
+        try {
+            timer_.update();
+            double dt = timer_.getDelta();
 
-        window_.pollEvents();
-        keyboard_.update();
-        mouse_.update();
+            window_.pollEvents();
+            keyboard_.update();
+            mouse_.update();
 
-        // Call tsuki.update(dt) if it exists
-        lua_engine_.callUpdate(dt);
+            // Call tsuki.update(dt) if it exists
+            lua_engine_.callUpdate(dt);
 
-        graphics_.clear();
+            graphics_.clear();
 
-        // Call tsuki.draw() if it exists
-        lua_engine_.callDraw();
+            // Call tsuki.draw() if it exists
+            lua_engine_.callDraw();
 
-        graphics_.present();
+            graphics_.present();
+        } catch (const std::exception& e) {
+            std::cerr << "Critical engine error: " << e.what() << std::endl;
+            std::cerr << "Attempting to continue..." << std::endl;
+            // Try to recover by clearing graphics and presenting
+            try {
+                graphics_.clear();
+                graphics_.present();
+            } catch (...) {
+                std::cerr << "Failed to recover, shutting down." << std::endl;
+                running_ = false;
+            }
+        } catch (...) {
+            std::cerr << "Unknown critical engine error, attempting to continue..." << std::endl;
+            try {
+                graphics_.clear();
+                graphics_.present();
+            } catch (...) {
+                std::cerr << "Failed to recover, shutting down." << std::endl;
+                running_ = false;
+            }
+        }
     }
 
     quit();

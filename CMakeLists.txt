@@ -39,6 +39,12 @@ endif()
 # zlib - build from source
 add_subdirectory(vendor/zlib)
 
+# fmt - formatting library
+set(FMT_INSTALL OFF CACHE BOOL "")
+set(FMT_TEST OFF CACHE BOOL "")
+set(FMT_DOC OFF CACHE BOOL "")
+add_subdirectory(vendor/fmt)
+
 # libzip - minimal build with our zlib
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "")
 set(ENABLE_COMMONCRYPTO OFF CACHE BOOL "")
@@ -71,7 +77,7 @@ target_include_directories(libtsuki
         vendor/libzip/lib
         vendor/zlib
 )
-target_link_libraries(libtsuki SDL3::SDL3-static lua zip zlibstatic)
+target_link_libraries(libtsuki SDL3::SDL3-static lua zip zlibstatic fmt::fmt)
 if(UNIX)
     target_link_libraries(libtsuki m)
 endif()
