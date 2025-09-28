@@ -48,7 +48,7 @@ struct Color {
 class Image {
 public:
     Image() = default;
-    explicit Image(const std::string& filename);
+    explicit Image(const std::string& filename, SDL_Renderer* renderer);
     ~Image();
 
     Image(const Image&) = delete;
@@ -56,7 +56,7 @@ public:
     Image(Image&& other) noexcept;
     Image& operator=(Image&& other) noexcept;
 
-    bool load(const std::string& filename);
+    bool load(const std::string& filename, SDL_Renderer* renderer);
     void unload();
 
     int getWidth() const;
@@ -101,12 +101,20 @@ public:
     void draw(const Image& image, float x, float y);
     void draw(const Image& image, float x, float y, float rotation, float sx = 1.0f, float sy = 1.0f,
               float ox = 0.0f, float oy = 0.0f);
+    void draw(const std::string& imageName, float x, float y);
+    void draw(const std::string& imageName, float x, float y, float rotation, float sx = 1.0f, float sy = 1.0f,
+              float ox = 0.0f, float oy = 0.0f);
 
     // Font management
     bool loadFont(const std::string& name, const std::string& filename, float size = 16.0f);
     bool setFont(const std::string& name);
     void setDefaultFont();
     bool initializeDefaultFont();
+
+    // Image management
+    bool loadImage(const std::string& name, const std::string& filename);
+    bool unloadImage(const std::string& name);
+    Image* getImage(const std::string& name);
 
     // Text drawing
     void print(const std::string& text, float x, float y);
@@ -133,6 +141,9 @@ private:
     // Font management
     std::map<std::string, std::unique_ptr<Font>> fonts_;
     Font* current_font_ = nullptr;
+
+    // Image management
+    std::map<std::string, std::unique_ptr<Image>> images_;
 
     struct Transform {
         float tx = 0.0f, ty = 0.0f;

@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 #include <iostream>
 #include <cstdlib>
+#include <filesystem>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -225,12 +226,28 @@ void Engine::runLuaGame(const std::string& game_path) {
         return;
     }
 
-    // Load the main.lua file from the game
-    std::string main_lua_path = game_path + "/main.lua";
+    // Save current working directory and change to game directory
+    // This ensures that relative paths in Lua scripts work correctly
+    std::filesystem::path original_cwd = std::filesystem::current_path();
+    std::filesystem::path game_dir = std::filesystem::absolute(game_path);
+
+    try {
+        std::filesystem::current_path(game_dir);
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to change to game directory: " << e.what() << std::endl;
+        return;
+    }
+
+    // Load the main.lua file from the game (now relative to the game directory)
+    std::string main_lua_path = "main.lua";
 
     // Try to load main.lua
     if (!lua_engine_.executeFile(main_lua_path)) {
         std::cerr << "Failed to load game: " << lua_engine_.getLastError() << std::endl;
+        // Restore original directory before returning
+        try {
+            std::filesystem::current_path(original_cwd);
+        } catch (...) {}
         return;
     }
 
@@ -279,6 +296,13 @@ void Engine::runLuaGame(const std::string& game_path) {
                 running_ = false;
             }
         }
+    }
+
+    // Restore original working directory
+    try {
+        std::filesystem::current_path(original_cwd);
+    } catch (const std::exception& e) {
+        std::cerr << "Warning: Failed to restore original working directory: " << e.what() << std::endl;
     }
 
     quit();

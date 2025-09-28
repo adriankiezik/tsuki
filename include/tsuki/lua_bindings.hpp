@@ -30,6 +30,8 @@ private:
     static int graphics_getTextSize(lua_State* L);
     static int graphics_loadFont(lua_State* L);
     static int graphics_setFont(lua_State* L);
+    static int graphics_loadImage(lua_State* L);
+    static int graphics_draw(lua_State* L);
 
     // Keyboard bindings
     static void registerKeyboard(lua_State* L);

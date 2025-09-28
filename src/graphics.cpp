@@ -3,6 +3,9 @@
 #include <cmath>
 #include <cstdio>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 // Define M_PI for Windows MSVC
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -11,8 +14,8 @@
 namespace tsuki {
 
 // Image implementation
-Image::Image(const std::string& filename) {
-    load(filename);
+Image::Image(const std::string& filename, SDL_Renderer* renderer) {
+    load(filename, renderer);
 }
 
 Image::~Image() {
@@ -39,25 +42,39 @@ Image& Image::operator=(Image&& other) noexcept {
     return *this;
 }
 
-bool Image::load(const std::string& filename) {
+bool Image::load(const std::string& filename, SDL_Renderer* renderer) {
     unload();
 
-#ifdef TSUKI_HAS_SDL_IMAGE
-    SDL_Surface* surface = IMG_Load(filename.c_str());
-    if (!surface) {
+    if (!renderer) {
         return false;
     }
 
-    width_ = surface->w;
-    height_ = surface->h;
+    // Load image using stb_image
+    int width, height, channels;
+    unsigned char* data = stbi_load(filename.c_str(), &width, &height, &channels, 4); // Force RGBA
 
-    // Note: We need a renderer to create texture, this will be handled in Graphics::draw
+    if (!data) {
+        return false;
+    }
+
+    width_ = width;
+    height_ = height;
+
+    // Create SDL surface from loaded data
+    SDL_Surface* surface = SDL_CreateSurfaceFrom(width, height, SDL_PIXELFORMAT_RGBA32, data, width * 4);
+    if (!surface) {
+        stbi_image_free(data);
+        return false;
+    }
+
+    // Create texture from surface
+    texture_ = SDL_CreateTextureFromSurface(renderer, surface);
+
+    // Clean up
     SDL_DestroySurface(surface);
-    return false; // Placeholder for now - needs renderer
-#else
-    (void)filename;
-    return false;
-#endif
+    stbi_image_free(data);
+
+    return texture_ != nullptr;
 }
 
 void Image::unload() {
@@ -402,6 +419,53 @@ bool Graphics::initializeDefaultFont() {
 
     // If no system font found, just use SDL debug font
     return false;
+}
+
+// Image management functions
+bool Graphics::loadImage(const std::string& name, const std::string& filename) {
+    if (!renderer_) {
+        return false;
+    }
+
+    auto image = std::make_unique<Image>();
+    if (!image->load(filename, renderer_)) {
+        return false;
+    }
+
+    images_[name] = std::move(image);
+    return true;
+}
+
+bool Graphics::unloadImage(const std::string& name) {
+    auto it = images_.find(name);
+    if (it != images_.end()) {
+        images_.erase(it);
+        return true;
+    }
+    return false;
+}
+
+Image* Graphics::getImage(const std::string& name) {
+    auto it = images_.find(name);
+    if (it != images_.end()) {
+        return it->second.get();
+    }
+    return nullptr;
+}
+
+// String-based draw methods
+void Graphics::draw(const std::string& imageName, float x, float y) {
+    Image* image = getImage(imageName);
+    if (image) {
+        draw(*image, x, y);
+    }
+}
+
+void Graphics::draw(const std::string& imageName, float x, float y, float rotation, float sx, float sy, float ox, float oy) {
+    Image* image = getImage(imageName);
+    if (image) {
+        draw(*image, x, y, rotation, sx, sy, ox, oy);
+    }
 }
 
 std::pair<int, int> Graphics::getTextSize(const std::string& text) {

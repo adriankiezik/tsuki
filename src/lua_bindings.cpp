@@ -46,6 +46,8 @@ void LuaBindings::registerGraphics(lua_State* L) {
     setFunction(L, "getTextSize", graphics_getTextSize);
     setFunction(L, "loadFont", graphics_loadFont);
     setFunction(L, "setFont", graphics_setFont);
+    setFunction(L, "loadImage", graphics_loadImage);
+    setFunction(L, "draw", graphics_draw);
 
     // Set graphics table
     lua_setfield(L, -2, "graphics");
@@ -279,6 +281,47 @@ int LuaBindings::graphics_setFont(lua_State* L) {
     bool success = engine_instance->getGraphics().setFont(name);
     lua_pushboolean(L, success);
     return 1;
+}
+
+int LuaBindings::graphics_loadImage(lua_State* L) {
+    if (!engine_instance) return 0;
+
+    const char* name = luaL_checkstring(L, 1);
+    const char* filename = luaL_checkstring(L, 2);
+
+    bool success = engine_instance->getGraphics().loadImage(name, filename);
+    lua_pushboolean(L, success);
+    return 1;
+}
+
+int LuaBindings::graphics_draw(lua_State* L) {
+    if (!engine_instance) return 0;
+
+    int argc = lua_gettop(L);
+    if (argc < 3) {
+        luaL_error(L, "draw requires at least 3 arguments: imageName, x, y");
+        return 0;
+    }
+
+    const char* imageName = luaL_checkstring(L, 1);
+    float x = (float)luaL_checknumber(L, 2);
+    float y = (float)luaL_checknumber(L, 3);
+
+    if (argc >= 4) {
+        // Advanced draw call with optional rotation, scale, and origin
+        float rotation = argc >= 4 ? (float)luaL_checknumber(L, 4) : 0.0f;
+        float sx = argc >= 5 ? (float)luaL_checknumber(L, 5) : 1.0f;
+        float sy = argc >= 6 ? (float)luaL_checknumber(L, 6) : 1.0f;
+        float ox = argc >= 7 ? (float)luaL_checknumber(L, 7) : 0.0f;
+        float oy = argc >= 8 ? (float)luaL_checknumber(L, 8) : 0.0f;
+
+        engine_instance->getGraphics().draw(imageName, x, y, rotation, sx, sy, ox, oy);
+    } else {
+        // Simple draw call
+        engine_instance->getGraphics().draw(imageName, x, y);
+    }
+
+    return 0;
 }
 
 // Industry-standard string-to-scancode mapping (LÖVE2D/Pygame approach)
