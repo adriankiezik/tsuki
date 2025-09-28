@@ -1,9 +1,11 @@
 #include <tsuki/tsuki.hpp>
 #include <tsuki/packaging.hpp>
+#include <tsuki/version.hpp>
 #include <iostream>
 #include <filesystem>
 #include <fstream>
 #include <cstring>
+#include <cstdio>
 #ifdef _WIN32
     #include <process.h>
     #define getpid _getpid
@@ -12,7 +14,7 @@
 #endif
 
 void printUsage(const char* program_name) {
-    std::cout << "Tsuki Game Engine v1.0.0\n";
+    std::cout << tsuki::PROJECT_NAME << " Game Engine v" << tsuki::VERSION << "\n";
     std::cout << "Usage:\n\n";
 
     std::cout << "  Running games:\n";
@@ -39,7 +41,7 @@ void printUsage(const char* program_name) {
 }
 
 void printVersion() {
-    std::cout << "Tsuki Game Engine v1.0.0\n";
+    std::cout << tsuki::PROJECT_NAME << " Game Engine v" << tsuki::VERSION << "\n";
     std::cout << "Built with C++23, SDL3, and Lua 5.4\n";
     std::cout << "Packaging support with libzip\n";
 }
@@ -48,7 +50,7 @@ int runGame(const std::string& game_path) {
     // Initialize the engine
     auto& engine = tsuki::Engine::getInstance();
     if (!engine.init()) {
-        std::cerr << "Failed to initialize Tsuki engine!" << std::endl;
+        std::cerr << "Failed to initialize Tsuki!" << std::endl;
         return 1;
     }
 
@@ -145,8 +147,8 @@ int main(int argc, char* argv[]) {
         }
 
         // Validate target platform
-        if (target_platform != "linux" && target_platform != "windows") {
-            std::cerr << "Error: Unsupported target platform '" << target_platform << "'. Supported: linux, windows" << std::endl;
+        if (target_platform != "linux" && target_platform != "windows" && target_platform != "macos") {
+            std::cerr << "Error: Unsupported target platform '" << target_platform << "'. Supported: linux, windows, macos" << std::endl;
             return 1;
         }
 
@@ -158,7 +160,50 @@ int main(int argc, char* argv[]) {
 
         std::cout << "Creating standalone executable for " << target_platform << " (" << target_arch << ")" << std::endl;
 
-        if (tsuki::Packaging::createStandaloneExecutable(argv[0], tsuki_file, output_exe, target_platform, target_arch)) {
+        // Resolve the full path to the current executable
+        std::string engine_path = argv[0];
+
+        // Check if argv[0] contains a path separator (cross-platform)
+        bool has_path = engine_path.find('/') != std::string::npos;
+#ifdef _WIN32
+        has_path = has_path || engine_path.find('\\') != std::string::npos;
+#endif
+
+        if (!has_path) {
+            // argv[0] is just the command name, need to find it in PATH
+            std::string which_result;
+
+#ifdef _WIN32
+            // Windows: use 'where' command
+            std::string command = "where " + engine_path;
+            if (engine_path.find(".exe") == std::string::npos) {
+                command = "where " + engine_path + ".exe";
+            }
+#else
+            // Unix/Linux/macOS: use 'which' command
+            std::string command = "which " + engine_path;
+#endif
+
+            FILE* pipe = popen(command.c_str(), "r");
+            if (pipe) {
+                char buffer[512];
+                if (fgets(buffer, sizeof(buffer), pipe)) {
+                    which_result = buffer;
+                    // Remove trailing newline/carriage return
+                    while (!which_result.empty() &&
+                           (which_result.back() == '\n' || which_result.back() == '\r')) {
+                        which_result.pop_back();
+                    }
+                }
+                pclose(pipe);
+            }
+
+            if (!which_result.empty() && std::filesystem::exists(which_result)) {
+                engine_path = which_result;
+            }
+        }
+
+        if (tsuki::Packaging::createStandaloneExecutable(engine_path, tsuki_file, output_exe, target_platform, target_arch)) {
             std::cout << "Successfully created standalone executable: " << output_exe << std::endl;
             return 0;
         } else {

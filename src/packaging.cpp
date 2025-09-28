@@ -1,4 +1,5 @@
 #include "tsuki/packaging.hpp"
+#include "tsuki/version.hpp"
 #include <zip.h>
 #include <iostream>
 #include <fstream>
@@ -341,16 +342,16 @@ std::string Packaging::getBinaryUrl(const std::string& platform, const std::stri
     if (custom_url) {
         base_url = std::string(custom_url);
     } else {
-        // Default to latest release - in production this should be the actual repo
-        base_url = "https://github.com/your-org/tsuki/releases/latest/download/";
+        // Use the actual Tsuki repository
+        base_url = "https://github.com/adriankiezik/tsuki/releases/latest/download/";
     }
 
-    return base_url + "tsuki-" + platform + "-" + arch + ".zip";
+    return base_url + "tsuki-v" + std::string(VERSION) + "-" + platform + "-" + arch + ".zip";
 }
 
 std::string Packaging::getCachedBinaryPath(const std::string& platform, const std::string& arch) {
     std::string cache_dir = getCacheDirectory();
-    return cache_dir + "/tsuki-" + platform + "-" + arch + ".zip";
+    return cache_dir + "/tsuki-v" + std::string(VERSION) + "-" + platform + "-" + arch + ".zip";
 }
 
 bool Packaging::downloadBinary(const std::string& url, const std::string& output_path) {

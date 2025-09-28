@@ -138,6 +138,17 @@ jobs:
         cd build
         if [ "${{ matrix.os }}" = "windows-latest" ]; then
           cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE=OFF
+        elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+          # Configure for static linking and self-contained macOS binaries
+          cmake .. -GNinja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_VERBOSE_MAKEFILE=OFF \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+            -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=OFF \
+            -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
+            -DCMAKE_INSTALL_RPATH="@executable_path" \
+            -DBUILD_SHARED_LIBS=OFF
         else
           cmake .. -GNinja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
@@ -155,6 +166,31 @@ jobs:
           ninja -j$(sysctl -n hw.logicalcpu)
         else
           ninja -j$(nproc)
+        fi
+
+    - name: Fix macOS library paths
+      if: matrix.os == 'macos-latest'
+      shell: bash
+      run: |
+        cd build
+        if [ -f tsuki ]; then
+          echo "📋 Checking tsuki dependencies:"
+          otool -L tsuki
+
+          echo "🔧 Fixing library paths..."
+          # Fix any @rpath references to use system libraries
+          install_name_tool -change @rpath/libz.1.dylib /usr/lib/libz.1.dylib tsuki || true
+          install_name_tool -change @rpath/libiconv.2.dylib /usr/lib/libiconv.2.dylib tsuki || true
+          install_name_tool -change @rpath/libbz2.1.0.dylib /usr/lib/libbz2.1.0.dylib tsuki || true
+
+          echo "✅ Fixed dependencies:"
+          otool -L tsuki
+
+          echo "🧪 Testing executable..."
+          ./tsuki --version || echo "⚠️  Warning: Executable test failed"
+        else
+          echo "❌ No tsuki binary found"
+          ls -la
         fi
 
     - name: Upload build artifacts
@@ -215,7 +251,7 @@ jobs:
       shell: bash
       run: |
         cat > release-bundle/README.txt << 'EOF'
-        Tsuki Engine ${{ env.VERSION }} - Linux
+        Tsuki ${{ env.VERSION }} - Linux
         ===================================
 
         Quick Start: ./tsuki --help
@@ -266,6 +302,13 @@ jobs:
         # Set execute permissions
         if [ -f release-bundle/tsuki ]; then
           chmod +x release-bundle/tsuki*
+
+          echo "📋 Verifying bundled executable dependencies:"
+          otool -L release-bundle/tsuki
+
+          echo "🧪 Testing bundled executable:"
+          ./release-bundle/tsuki --version || echo "⚠️  Warning: Bundled executable test failed"
+
           echo "✅ Successfully bundled macOS executables"
           ls -la release-bundle/
         else
@@ -302,7 +345,7 @@ jobs:
       shell: bash
       run: |
         cat > release-bundle/README.txt << 'EOF'
-        Tsuki Engine ${{ env.VERSION }} - macOS
+        Tsuki ${{ env.VERSION }} - macOS
         ====================================
 
         CLI Usage: ./tsuki --help
@@ -364,7 +407,7 @@ jobs:
       shell: bash
       run: |
         cat > release-bundle/README.txt << 'EOF'
-        Tsuki Engine ${{ env.VERSION }} - Windows
+        Tsuki ${{ env.VERSION }} - Windows
         ======================================
 
         Quick Start: tsuki.exe --help
@@ -410,9 +453,9 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ env.VERSION }}
-        name: Tsuki Engine ${{ env.VERSION }}
+        name: Tsuki ${{ env.VERSION }}
         body: |
-          ## Tsuki Engine ${{ env.VERSION }}
+          ## Tsuki ${{ env.VERSION }}
 
           Cross-platform game engine binaries for Linux, macOS, and Windows.
 
