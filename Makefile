@@ -1,4 +1,4 @@
-# Tsuki Engine Makefile
+# Tsuki Makefile
 
 .PHONY: build clean lua-definitions dist release-prep help
 
@@ -41,7 +41,7 @@ all: build dist
 
 # Show available commands
 help:
-	@echo "Tsuki Engine Build Commands:"
+	@echo "Tsuki Build Commands:"
 	@echo ""
 	@echo "🔨 Building:"
 	@echo "  build              - Build the engine"

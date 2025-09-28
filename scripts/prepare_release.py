@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Tsuki Engine - Release Preparation Script
+Tsuki - Release Preparation Script
 Prepares release packages for GitHub releases including IntelliSense assets.
 """
 
@@ -72,7 +72,7 @@ def create_intellisense_package(project_root: Path, output_dir: Path, version: s
     setup_script = package_dir / "setup.py"
     setup_content = f'''#!/usr/bin/env python3
 """
-Tsuki Engine IntelliSense Setup Script
+Tsuki IntelliSense Setup Script
 Automatically configures VSCode Lua IntelliSense for Tsuki projects.
 """
 
@@ -155,7 +155,7 @@ def create_archives(package_dir: Path, output_dir: Path, package_name: str):
     return tar_path, zip_path
 
 def main():
-    parser = argparse.ArgumentParser(description="Prepare Tsuki Engine release")
+    parser = argparse.ArgumentParser(description="Prepare Tsuki release")
     parser.add_argument("--version", "-v", help="Version string (default: auto-detect from git)")
     parser.add_argument("--output", "-o", default="releases", help="Output directory (default: releases)")
     parser.add_argument("--clean", action="store_true", help="Clean output directory first")
@@ -197,7 +197,7 @@ def main():
     release_info = output_dir / "RELEASE_INFO.md"
     import datetime
     timestamp = datetime.datetime.now().isoformat()
-    release_content = f"""# Tsuki Engine Release {version}
+    release_content = f"""# Tsuki Release {version}
 
 ## IntelliSense Package
 

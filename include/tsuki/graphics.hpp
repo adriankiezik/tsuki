@@ -5,16 +5,31 @@
 #include <string>
 #include <array>
 #include <vector>
+#include <map>
 
 #ifdef TSUKI_HAS_SDL_IMAGE
 #include <SDL3_image/SDL_image.h>
 #endif
+
+#include "font.hpp"
 
 namespace tsuki {
 
 enum class DrawMode {
     Fill,
     Line
+};
+
+enum class HorizontalAlign {
+    Left,
+    Center,
+    Right
+};
+
+enum class VerticalAlign {
+    Top,
+    Middle,
+    Bottom
 };
 
 struct Color {
@@ -87,8 +102,21 @@ public:
     void draw(const Image& image, float x, float y, float rotation, float sx = 1.0f, float sy = 1.0f,
               float ox = 0.0f, float oy = 0.0f);
 
+    // Font management
+    bool loadFont(const std::string& name, const std::string& filename, float size = 16.0f);
+    bool setFont(const std::string& name);
+    void setDefaultFont();
+    bool initializeDefaultFont();
+
     // Text drawing
     void print(const std::string& text, float x, float y);
+    void print(const std::string& text, float x, float y, HorizontalAlign halign);
+    void print(const std::string& text, float x, float y, HorizontalAlign halign, VerticalAlign valign);
+    void print(const std::string& text, float x, float y, const std::string& align);
+    void printAligned(const std::string& text, float x, float y, float width, float height,
+                     HorizontalAlign halign = HorizontalAlign::Left, VerticalAlign valign = VerticalAlign::Top);
+    void printAligned(const std::string& text, float x, float y, float width, float height, const std::string& align);
+    std::pair<int, int> getTextSize(const std::string& text);
     void printf(const std::string& text, float x, float y, float limit, const std::string& align = "left");
 
     // Transformation
@@ -102,6 +130,10 @@ private:
     SDL_Renderer* renderer_ = nullptr;
     Color current_color_ = Color::white();
 
+    // Font management
+    std::map<std::string, std::unique_ptr<Font>> fonts_;
+    Font* current_font_ = nullptr;
+
     struct Transform {
         float tx = 0.0f, ty = 0.0f;
         float rotation = 0.0f;
@@ -113,6 +145,14 @@ private:
 
     void applyTransform();
     void drawCirclePoints(float cx, float cy, float x, float y);
+
+    // Text alignment helpers
+    std::pair<HorizontalAlign, VerticalAlign> parseAlignment(const std::string& align);
+    std::pair<float, float> calculateAlignedPosition(const std::string& text, float x, float y,
+                                                   HorizontalAlign halign, VerticalAlign valign);
+    std::pair<float, float> calculateAlignedPosition(const std::string& text, float x, float y, float width, float height,
+                                                   HorizontalAlign halign, VerticalAlign valign);
+
 };
 
 } // namespace tsuki

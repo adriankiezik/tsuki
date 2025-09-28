@@ -3,6 +3,9 @@
 #include "tsuki/debug_utils.hpp"
 #include <iostream>
 #include <cstring>
+#include <unordered_map>
+#include <string>
+#include <algorithm>
 
 namespace tsuki {
 
@@ -21,6 +24,9 @@ void LuaBindings::registerAll(lua_State* L, Engine* engine) {
     registerMouse(L);
     registerWindow(L);
     registerDebug(L);
+
+    // Also register modules globally for convenience
+    registerModulesGlobally(L);
 }
 
 void LuaBindings::registerGraphics(lua_State* L) {
@@ -37,6 +43,10 @@ void LuaBindings::registerGraphics(lua_State* L) {
     setFunction(L, "circle", graphics_circle);
     setFunction(L, "line", graphics_line);
     setFunction(L, "print", graphics_print);
+    setFunction(L, "printAligned", graphics_printAligned);
+    setFunction(L, "getTextSize", graphics_getTextSize);
+    setFunction(L, "loadFont", graphics_loadFont);
+    setFunction(L, "setFont", graphics_setFont);
 
     // Set graphics table
     lua_setfield(L, -2, "graphics");
@@ -165,12 +175,185 @@ int LuaBindings::graphics_line(lua_State* L) {
 int LuaBindings::graphics_print(lua_State* L) {
     if (!engine_instance) return 0;
 
-    const char* text = luaL_checkstring(L, 1);
+    int argc = lua_gettop(L);
+    std::string text;
+    float x = 0.0f, y = 0.0f;
+
+    // Handle variable arguments
+    if (argc >= 1) {
+        // Convert any type to string
+        if (lua_isstring(L, 1)) {
+            text = lua_tostring(L, 1);
+        } else if (lua_isnumber(L, 1)) {
+            text = std::to_string(lua_tonumber(L, 1));
+        } else if (lua_isboolean(L, 1)) {
+            text = lua_toboolean(L, 1) ? "true" : "false";
+        } else if (lua_isnil(L, 1)) {
+            text = "nil";
+        } else {
+            text = "unknown";
+        }
+    }
+
+    if (argc >= 2) {
+        x = (float)luaL_checknumber(L, 2);
+    }
+
+    if (argc >= 3) {
+        y = (float)luaL_checknumber(L, 3);
+    }
+
+    // Check for alignment parameter
+    if (argc >= 4) {
+        const char* align = luaL_checkstring(L, 4);
+        engine_instance->getGraphics().print(text, x, y, align);
+    } else {
+        engine_instance->getGraphics().print(text, x, y);
+    }
+    return 0;
+}
+
+int LuaBindings::graphics_printAligned(lua_State* L) {
+    if (!engine_instance) return 0;
+
+    int argc = lua_gettop(L);
+    if (argc < 5) {
+        luaL_error(L, "printAligned requires at least 5 arguments: text, x, y, width, height");
+        return 0;
+    }
+
+    // Get required parameters
+    std::string text;
+    if (lua_isstring(L, 1)) {
+        text = lua_tostring(L, 1);
+    } else if (lua_isnumber(L, 1)) {
+        text = std::to_string(lua_tonumber(L, 1));
+    } else if (lua_isboolean(L, 1)) {
+        text = lua_toboolean(L, 1) ? "true" : "false";
+    } else if (lua_isnil(L, 1)) {
+        text = "nil";
+    } else {
+        text = "unknown";
+    }
+
     float x = (float)luaL_checknumber(L, 2);
     float y = (float)luaL_checknumber(L, 3);
+    float width = (float)luaL_checknumber(L, 4);
+    float height = (float)luaL_checknumber(L, 5);
 
-    engine_instance->getGraphics().print(text, x, y);
+    // Check for alignment parameter
+    if (argc >= 6) {
+        const char* align = luaL_checkstring(L, 6);
+        engine_instance->getGraphics().printAligned(text, x, y, width, height, align);
+    } else {
+        engine_instance->getGraphics().printAligned(text, x, y, width, height);
+    }
+
     return 0;
+}
+
+int LuaBindings::graphics_getTextSize(lua_State* L) {
+    if (!engine_instance) return 0;
+
+    const char* text = luaL_checkstring(L, 1);
+    auto [width, height] = engine_instance->getGraphics().getTextSize(text);
+
+    lua_pushinteger(L, width);
+    lua_pushinteger(L, height);
+    return 2; // Return two values: width, height
+}
+
+int LuaBindings::graphics_loadFont(lua_State* L) {
+    if (!engine_instance) return 0;
+
+    const char* name = luaL_checkstring(L, 1);
+    const char* filename = luaL_checkstring(L, 2);
+    float size = 20.0f;
+
+    if (lua_gettop(L) >= 3) {
+        size = (float)luaL_checknumber(L, 3);
+    }
+
+    bool success = engine_instance->getGraphics().loadFont(name, filename, size);
+    lua_pushboolean(L, success);
+    return 1;
+}
+
+int LuaBindings::graphics_setFont(lua_State* L) {
+    if (!engine_instance) return 0;
+
+    const char* name = luaL_checkstring(L, 1);
+    bool success = engine_instance->getGraphics().setFont(name);
+    lua_pushboolean(L, success);
+    return 1;
+}
+
+// Industry-standard string-to-scancode mapping (LÖVE2D/Pygame approach)
+// Avoids broken SDL_GetScancodeFromName() and uses stable SDL scancode constants
+static SDL_Scancode getScancodeFromString(const std::string& input) {
+    // Convert to lowercase for case-insensitive lookup
+    std::string key = input;
+    std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+
+    // Direct mapping to stable SDL_SCANCODE constants
+    static const std::unordered_map<std::string, SDL_Scancode> scancode_map = {
+        // Letters
+        {"a", SDL_SCANCODE_A}, {"b", SDL_SCANCODE_B}, {"c", SDL_SCANCODE_C}, {"d", SDL_SCANCODE_D},
+        {"e", SDL_SCANCODE_E}, {"f", SDL_SCANCODE_F}, {"g", SDL_SCANCODE_G}, {"h", SDL_SCANCODE_H},
+        {"i", SDL_SCANCODE_I}, {"j", SDL_SCANCODE_J}, {"k", SDL_SCANCODE_K}, {"l", SDL_SCANCODE_L},
+        {"m", SDL_SCANCODE_M}, {"n", SDL_SCANCODE_N}, {"o", SDL_SCANCODE_O}, {"p", SDL_SCANCODE_P},
+        {"q", SDL_SCANCODE_Q}, {"r", SDL_SCANCODE_R}, {"s", SDL_SCANCODE_S}, {"t", SDL_SCANCODE_T},
+        {"u", SDL_SCANCODE_U}, {"v", SDL_SCANCODE_V}, {"w", SDL_SCANCODE_W}, {"x", SDL_SCANCODE_X},
+        {"y", SDL_SCANCODE_Y}, {"z", SDL_SCANCODE_Z},
+
+        // Numbers
+        {"0", SDL_SCANCODE_0}, {"1", SDL_SCANCODE_1}, {"2", SDL_SCANCODE_2}, {"3", SDL_SCANCODE_3},
+        {"4", SDL_SCANCODE_4}, {"5", SDL_SCANCODE_5}, {"6", SDL_SCANCODE_6}, {"7", SDL_SCANCODE_7},
+        {"8", SDL_SCANCODE_8}, {"9", SDL_SCANCODE_9},
+
+        // Problem keys specifically mentioned by user
+        {"enter", SDL_SCANCODE_RETURN}, {"return", SDL_SCANCODE_RETURN},
+        {"backslash", SDL_SCANCODE_BACKSLASH}, {"\\", SDL_SCANCODE_BACKSLASH},
+        {"tilde", SDL_SCANCODE_GRAVE}, {"~", SDL_SCANCODE_GRAVE}, {"grave", SDL_SCANCODE_GRAVE}, {"`", SDL_SCANCODE_GRAVE},
+        {"minus", SDL_SCANCODE_MINUS}, {"-", SDL_SCANCODE_MINUS},
+        {"equals", SDL_SCANCODE_EQUALS}, {"=", SDL_SCANCODE_EQUALS},
+        {"caps", SDL_SCANCODE_CAPSLOCK}, {"capslock", SDL_SCANCODE_CAPSLOCK},
+
+        // Other symbol keys
+        {"semicolon", SDL_SCANCODE_SEMICOLON}, {";", SDL_SCANCODE_SEMICOLON},
+        {"apostrophe", SDL_SCANCODE_APOSTROPHE}, {"'", SDL_SCANCODE_APOSTROPHE},
+        {"comma", SDL_SCANCODE_COMMA}, {",", SDL_SCANCODE_COMMA},
+        {"period", SDL_SCANCODE_PERIOD}, {".", SDL_SCANCODE_PERIOD},
+        {"slash", SDL_SCANCODE_SLASH}, {"/", SDL_SCANCODE_SLASH},
+        {"leftbracket", SDL_SCANCODE_LEFTBRACKET}, {"[", SDL_SCANCODE_LEFTBRACKET},
+        {"rightbracket", SDL_SCANCODE_RIGHTBRACKET}, {"]", SDL_SCANCODE_RIGHTBRACKET},
+
+        // Arrow keys
+        {"up", SDL_SCANCODE_UP}, {"down", SDL_SCANCODE_DOWN},
+        {"left", SDL_SCANCODE_LEFT}, {"right", SDL_SCANCODE_RIGHT},
+
+        // Function keys
+        {"f1", SDL_SCANCODE_F1}, {"f2", SDL_SCANCODE_F2}, {"f3", SDL_SCANCODE_F3}, {"f4", SDL_SCANCODE_F4},
+        {"f5", SDL_SCANCODE_F5}, {"f6", SDL_SCANCODE_F6}, {"f7", SDL_SCANCODE_F7}, {"f8", SDL_SCANCODE_F8},
+        {"f9", SDL_SCANCODE_F9}, {"f10", SDL_SCANCODE_F10}, {"f11", SDL_SCANCODE_F11}, {"f12", SDL_SCANCODE_F12},
+
+        // Special keys
+        {"space", SDL_SCANCODE_SPACE}, {"escape", SDL_SCANCODE_ESCAPE}, {"esc", SDL_SCANCODE_ESCAPE},
+        {"tab", SDL_SCANCODE_TAB}, {"backspace", SDL_SCANCODE_BACKSPACE},
+        {"delete", SDL_SCANCODE_DELETE}, {"del", SDL_SCANCODE_DELETE},
+        {"insert", SDL_SCANCODE_INSERT}, {"ins", SDL_SCANCODE_INSERT},
+        {"home", SDL_SCANCODE_HOME}, {"end", SDL_SCANCODE_END},
+        {"pageup", SDL_SCANCODE_PAGEUP}, {"pagedown", SDL_SCANCODE_PAGEDOWN},
+
+        // Modifier keys
+        {"shift", SDL_SCANCODE_LSHIFT}, {"lshift", SDL_SCANCODE_LSHIFT}, {"rshift", SDL_SCANCODE_RSHIFT},
+        {"ctrl", SDL_SCANCODE_LCTRL}, {"lctrl", SDL_SCANCODE_LCTRL}, {"rctrl", SDL_SCANCODE_RCTRL},
+        {"alt", SDL_SCANCODE_LALT}, {"lalt", SDL_SCANCODE_LALT}, {"ralt", SDL_SCANCODE_RALT},
+        {"gui", SDL_SCANCODE_LGUI}, {"lgui", SDL_SCANCODE_LGUI}, {"rgui", SDL_SCANCODE_RGUI}
+    };
+
+    auto it = scancode_map.find(key);
+    return (it != scancode_map.end()) ? it->second : SDL_SCANCODE_UNKNOWN;
 }
 
 // Keyboard functions
@@ -179,14 +362,9 @@ int LuaBindings::keyboard_isDown(lua_State* L) {
 
     const char* key_name = luaL_checkstring(L, 1);
 
-    // Simple key mapping (extend as needed)
-    KeyCode key = KeyCode::Space;
-    if (strcmp(key_name, "space") == 0) key = KeyCode::Space;
-    else if (strcmp(key_name, "left") == 0) key = KeyCode::Left;
-    else if (strcmp(key_name, "right") == 0) key = KeyCode::Right;
-    else if (strcmp(key_name, "up") == 0) key = KeyCode::Up;
-    else if (strcmp(key_name, "down") == 0) key = KeyCode::Down;
-    else if (strcmp(key_name, "escape") == 0) key = KeyCode::Escape;
+    // Use direct scancode mapping instead of broken SDL name conversion
+    SDL_Scancode scancode = getScancodeFromString(std::string(key_name));
+    KeyCode key = static_cast<KeyCode>(scancode);
 
     bool is_down = engine_instance->getKeyboard().isDown(key);
     lua_pushboolean(L, is_down);
@@ -426,6 +604,59 @@ int LuaBindings::debug_prettyInfo(lua_State* L) {
     }
 
     return 0;
+}
+
+// Register modules globally for convenience (graphics.print vs tsuki.graphics.print)
+void LuaBindings::registerModulesGlobally(lua_State* L) {
+    // Get the tsuki table
+    lua_getglobal(L, "tsuki");
+    if (lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+        return;
+    }
+
+    // Copy graphics table to global
+    lua_getfield(L, -1, "graphics");
+    if (!lua_isnil(L, -1)) {
+        lua_setglobal(L, "graphics");
+    } else {
+        lua_pop(L, 1);
+    }
+
+    // Copy keyboard table to global
+    lua_getfield(L, -1, "keyboard");
+    if (!lua_isnil(L, -1)) {
+        lua_setglobal(L, "keyboard");
+    } else {
+        lua_pop(L, 1);
+    }
+
+    // Copy mouse table to global
+    lua_getfield(L, -1, "mouse");
+    if (!lua_isnil(L, -1)) {
+        lua_setglobal(L, "mouse");
+    } else {
+        lua_pop(L, 1);
+    }
+
+    // Copy window table to global
+    lua_getfield(L, -1, "window");
+    if (!lua_isnil(L, -1)) {
+        lua_setglobal(L, "window");
+    } else {
+        lua_pop(L, 1);
+    }
+
+    // Copy debug table to global
+    lua_getfield(L, -1, "debug");
+    if (!lua_isnil(L, -1)) {
+        lua_setglobal(L, "debug");
+    } else {
+        lua_pop(L, 1);
+    }
+
+    // Pop the tsuki table
+    lua_pop(L, 1);
 }
 
 // Utility functions

@@ -76,6 +76,7 @@ target_include_directories(libtsuki
         vendor/lua
         vendor/libzip/lib
         vendor/zlib
+        vendor/stb
 )
 target_link_libraries(libtsuki SDL3::SDL3-static lua zip zlibstatic fmt::fmt)
 if(UNIX)

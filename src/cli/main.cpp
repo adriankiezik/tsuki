@@ -60,32 +60,24 @@ void printVersion() {
 
 // Helper function to create minimal main.lua template
 std::string getMinimalTemplate(const std::string& project_name) {
-    return R"(-- )" + project_name + R"( - A Tsuki Game
--- Created with Tsuki Engine
-
-function tsuki.load()
-    -- This function is called once when the game starts
-    tsuki.window.setTitle(")" + project_name + R"(")
+    return R"(function tsuki.load()
+    -- Called once when the game starts
+    window.setTitle(")" + project_name + R"(")
 end
 
 function tsuki.update(dt)
-    -- This function is called every frame
-    -- dt is the time in seconds since the last frame
+    -- Called every frame for game logic
 end
 
 function tsuki.draw()
-    -- This function is called every frame to render graphics
+    -- Called every frame for rendering
+    graphics.clear(0.1, 0.1, 0.2, 1.0)
 
-    -- Clear the screen with a dark background
-    tsuki.graphics.clear(0.1, 0.1, 0.3, 1.0)
+    graphics.setColor(1.0, 1.0, 1.0, 1.0)
+    graphics.print("Welcome to Tsuki!", window.getWidth()/2, window.getHeight()/2 - 20, "center")
+    graphics.print("Edit main.lua to start building your game", window.getWidth()/2, window.getHeight()/2 + 20, "center")
 
-    -- Draw some sample text
-    tsuki.graphics.setColor(1.0, 1.0, 1.0, 1.0)
-    tsuki.graphics.print("Welcome to )" + project_name + R"(!", 10, 10)
-    tsuki.graphics.print("Edit main.lua to start building your game", 10, 30)
-
-    -- Present the rendered frame to the screen
-    tsuki.graphics.present()
+    graphics.present()
 end
 )";
 }

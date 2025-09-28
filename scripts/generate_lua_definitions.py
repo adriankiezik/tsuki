@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Tsuki Engine - Lua Definitions Generator
+Tsuki - Lua Definitions Generator
 Automatically generates Lua type definitions from C++ binding code.
 """
 
@@ -109,12 +109,19 @@ class LuaDefinitionGenerator:
             (r'luaL_optinteger\(L,\s*(\d+)', 'integer?'),
         ]
 
+        # First collect all parameters with their indices
+        param_indices = {}
         for pattern, param_type in check_patterns:
             matches = re.findall(pattern, func_body)
             for match in matches:
                 param_index = int(match)
-                param_name = self._generate_param_name(cpp_func_name, param_index)
-                func.add_param(param_name, param_type)
+                param_indices[param_index] = param_type
+
+        # Add parameters in correct order using predefined names
+        for i in sorted(param_indices.keys()):
+            param_name = self._generate_param_name(cpp_func_name, i)
+            param_type = param_indices[i]
+            func.add_param(param_name, param_type)
 
         # Parse return statements to determine return types
         if 'lua_pushboolean' in func_body:
@@ -134,6 +141,14 @@ class LuaDefinitionGenerator:
         # Add descriptions based on function names
         func.description = self._generate_description(cpp_func_name)
 
+        # Special handling for flexible functions
+        if cpp_func_name == 'graphics_print':
+            func.params = [('text', 'any'), ('x', 'number?'), ('y', 'number?'), ('align', 'string?')]
+        elif cpp_func_name == 'graphics_printAligned':
+            func.params = [('text', 'any'), ('x', 'number'), ('y', 'number'), ('width', 'number'), ('height', 'number'), ('align', 'string?')]
+        elif cpp_func_name == 'graphics_getTextSize':
+            func.returns = ['number', 'number']  # width, height
+
     def _generate_param_name(self, cpp_func_name: str, index: int) -> str:
         """Generate meaningful parameter names based on function name and index."""
         param_names = {
@@ -142,7 +157,11 @@ class LuaDefinitionGenerator:
             'graphics_rectangle': ['mode', 'x', 'y', 'width', 'height'],
             'graphics_circle': ['mode', 'x', 'y', 'radius'],
             'graphics_line': ['x1', 'y1', 'x2', 'y2'],
-            'graphics_print': ['text', 'x', 'y'],
+            'graphics_print': ['text', 'x', 'y', 'align'],
+            'graphics_printAligned': ['text', 'x', 'y', 'width', 'height', 'align'],
+            'graphics_getTextSize': ['text'],
+            'graphics_loadFont': ['name', 'filename', 'size'],
+            'graphics_setFont': ['name'],
             'keyboard_isDown': ['key'],
             'mouse_isDown': ['button'],
             'window_setTitle': ['title'],
@@ -165,7 +184,11 @@ class LuaDefinitionGenerator:
             'graphics_rectangle': 'Draw a rectangle',
             'graphics_circle': 'Draw a circle',
             'graphics_line': 'Draw a line',
-            'graphics_print': 'Print text to screen',
+            'graphics_print': 'Print text to screen with optional alignment',
+            'graphics_printAligned': 'Print text within a bounded rectangle with alignment',
+            'graphics_getTextSize': 'Get the width and height of text in pixels',
+            'graphics_loadFont': 'Load a font from file with specified size',
+            'graphics_setFont': 'Set the current font for text rendering',
             'keyboard_isDown': 'Check if a key is currently pressed',
             'mouse_getPosition': 'Get current mouse position',
             'mouse_isDown': 'Check if a mouse button is currently pressed',
@@ -183,7 +206,7 @@ class LuaDefinitionGenerator:
     def generate_definitions(self) -> str:
         """Generate the complete Lua definitions file."""
         output = []
-        output.append("-- Tsuki Engine Lua API Definitions")
+        output.append("-- Tsuki Lua API Definitions")
         output.append("-- Auto-generated from C++ binding code")
         output.append("-- Place this file in your project root and add it to .luarc.json workspace.library")
         output.append("")
@@ -194,9 +217,21 @@ class LuaDefinitionGenerator:
         output.append("---@class tsuki")
         for module in sorted(self.modules.keys()):
             if module:
+                module_descriptions = {
+                    'debug': 'Debug utilities and stack inspection',
+                    'graphics': 'Drawing and rendering functions',
+                    'keyboard': 'Keyboard input handling',
+                    'mouse': 'Mouse input handling',
+                    'window': 'Window management functions'
+                }
+                desc = module_descriptions.get(module, f"{module.title()} module")
+                output.append(f"---{desc}")
                 output.append(f"---@field {module} tsuki_{module}")
+        output.append("---Called once when the game starts")
         output.append("---@field load fun()")
+        output.append("---Called every frame for game logic updates")
         output.append("---@field update fun(dt: number)")
+        output.append("---Called every frame for rendering")
         output.append("---@field draw fun()")
         output.append("tsuki = {}")
         output.append("")
@@ -225,9 +260,22 @@ class LuaDefinitionGenerator:
                         return_type = "nil"
 
                     param_str = ", ".join(params)
+
+                    # Add description if available
+                    if func.description:
+                        output.append(f"---{func.description}")
+
                     output.append(f"---@field {func_name} fun({param_str}): {return_type}")
 
             output.append("")
+
+        # Generate global module aliases for convenience API
+        output.append("-- Global module aliases for convenience")
+        for module in sorted(self.modules.keys()):
+            if module:
+                output.append(f"---@type tsuki_{module}")
+                output.append(f"{module} = {{}}")
+        output.append("")
 
         return "\n".join(output)
 
@@ -240,9 +288,9 @@ class LuaDefinitionGenerator:
 
     def generate_readme(self) -> str:
         """Generate README for the distribution package."""
-        return """# Tsuki Engine - Lua IntelliSense Package
+        return """# Tsuki - Lua IntelliSense Package
 
-This package provides VSCode IntelliSense support for Tsuki Engine Lua scripting.
+This package provides VSCode IntelliSense support for Tsuki Lua scripting.
 
 ## Quick Setup
 
@@ -263,14 +311,14 @@ This package provides VSCode IntelliSense support for Tsuki Engine Lua scripting
 
 ## Features
 
-- ✅ Full autocomplete for all Tsuki engine functions
+- ✅ Full autocomplete for all Tsuki functions
 - ✅ Parameter hints with type information
 - ✅ Documentation on hover
 - ✅ Type checking and error detection
 
 ## API Overview
 
-The Tsuki engine provides these main modules:
+The Tsuki provides these main modules:
 
 - `tsuki.graphics.*` - Drawing and rendering functions
 - `tsuki.keyboard.*` - Keyboard input handling
@@ -328,7 +376,7 @@ For more help, visit: https://github.com/your-username/tsuki
         with open(version_file, 'w') as f:
             import datetime
             f.write(f"Generated: {datetime.datetime.now().isoformat()}\n")
-            f.write("Package: Tsuki Engine Lua IntelliSense\n")
+            f.write("Package: Tsuki Lua IntelliSense\n")
             f.write("Source: Auto-generated from C++ bindings\n")
         print(f"Generated version info: {version_file}")
 

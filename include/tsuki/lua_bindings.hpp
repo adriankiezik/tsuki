@@ -27,6 +27,10 @@ private:
     static int graphics_circle(lua_State* L);
     static int graphics_line(lua_State* L);
     static int graphics_print(lua_State* L);
+    static int graphics_printAligned(lua_State* L);
+    static int graphics_getTextSize(lua_State* L);
+    static int graphics_loadFont(lua_State* L);
+    static int graphics_setFont(lua_State* L);
 
     // Keyboard bindings
     static void registerKeyboard(lua_State* L);
@@ -49,6 +53,9 @@ private:
     static int debug_printStack(lua_State* L);
     static int debug_getInfo(lua_State* L);
     static int debug_prettyInfo(lua_State* L);
+
+    // Module registration
+    static void registerModulesGlobally(lua_State* L);
 
     // Utility functions
     static void createTable(lua_State* L, const char* name);

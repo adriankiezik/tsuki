@@ -45,10 +45,10 @@ $wxsTemplate = @'
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Product Id="PRODUCT_GUID_PLACEHOLDER"
-           Name="Tsuki Game Engine"
+           Name="Tsuki"
            Language="1033"
            Version="VERSION_PLACEHOLDER"
-           Manufacturer="Tsuki Engine Project"
+           Manufacturer="Tsuki Project"
            UpgradeCode="UPGRADE_GUID_PLACEHOLDER">
 
     <Package InstallerVersion="200"
@@ -60,7 +60,7 @@ $wxsTemplate = @'
     <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
-    <Feature Id="ProductFeature" Title="Tsuki Engine" Level="1">
+    <Feature Id="ProductFeature" Title="Tsuki" Level="1">
       <ComponentGroupRef Id="ProductComponents" />
       <ComponentRef Id="EnvironmentPathComponent" />
     </Feature>

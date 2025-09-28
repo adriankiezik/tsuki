@@ -1,6 +1,7 @@
 #include "tsuki/graphics.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 // Define M_PI for Windows MSVC
 #ifndef M_PI
@@ -80,6 +81,12 @@ int Image::getHeight() const {
 bool Graphics::init(SDL_Renderer* renderer) {
     renderer_ = renderer;
     current_color_ = Color::white();
+
+    if (renderer_) {
+        // Try to initialize a default system font
+        initializeDefaultFont();
+    }
+
     return renderer_ != nullptr;
 }
 
@@ -298,9 +305,153 @@ void Graphics::draw(const Image& image, float x, float y, float rotation, float 
 }
 
 void Graphics::print(const std::string& text, float x, float y) {
-    // Text rendering would require SDL_ttf implementation
-    // For now, this is a placeholder
-    (void)text; (void)x; (void)y; // Suppress unused parameter warnings
+    if (!renderer_ || text.empty()) {
+        return;
+    }
+
+    // If we have a font loaded, use the proper font system
+    if (current_font_) {
+        // Render text using the Font system
+        Uint8 r = static_cast<Uint8>(current_color_.r * 255);
+        Uint8 g = static_cast<Uint8>(current_color_.g * 255);
+        Uint8 b = static_cast<Uint8>(current_color_.b * 255);
+        Uint8 a = static_cast<Uint8>(current_color_.a * 255);
+
+        SDL_Texture* textTexture = current_font_->renderText(renderer_, text, r, g, b, a);
+        if (!textTexture) {
+            // If custom font fails, fall back to SDL debug font
+            SDL_SetRenderDrawColor(renderer_, r, g, b, a);
+            SDL_RenderDebugText(renderer_, x, y, text.c_str());
+            return;
+        }
+
+        // Get texture dimensions
+        float textWidth, textHeight;
+        SDL_GetTextureSize(textTexture, &textWidth, &textHeight);
+
+
+        // Set destination rectangle
+        SDL_FRect destRect = {x, y, textWidth, textHeight};
+
+        // Render the texture
+        SDL_RenderTexture(renderer_, textTexture, nullptr, &destRect);
+
+        // Clean up
+        SDL_DestroyTexture(textTexture);
+    } else {
+        // Use SDL3's built-in debug font as default - never use fallback text
+        Uint8 r = static_cast<Uint8>(current_color_.r * 255);
+        Uint8 g = static_cast<Uint8>(current_color_.g * 255);
+        Uint8 b = static_cast<Uint8>(current_color_.b * 255);
+        Uint8 a = static_cast<Uint8>(current_color_.a * 255);
+
+        SDL_SetRenderDrawColor(renderer_, r, g, b, a);
+        SDL_RenderDebugText(renderer_, x, y, text.c_str());
+    }
+}
+
+// Font management functions
+bool Graphics::loadFont(const std::string& name, const std::string& filename, float size) {
+    auto font = std::make_unique<Font>();
+    if (!font->loadFromFile(filename, size)) {
+        return false;
+    }
+
+    fonts_[name] = std::move(font);
+    return true;
+}
+
+bool Graphics::setFont(const std::string& name) {
+    auto it = fonts_.find(name);
+    if (it != fonts_.end()) {
+        current_font_ = it->second.get();
+        return true;
+    }
+    return false;
+}
+
+void Graphics::setDefaultFont() {
+    current_font_ = nullptr;
+    // Try to set to a default font if one exists
+    auto it = fonts_.find("default");
+    if (it != fonts_.end()) {
+        current_font_ = it->second.get();
+    }
+}
+
+bool Graphics::initializeDefaultFont() {
+    // Try to load a system font as default
+    std::vector<std::string> systemFontPaths = {
+        "/usr/share/fonts/noto/NotoSans-Regular.ttf",           // Noto Sans (most common)
+        "/usr/share/fonts/TTF/DejaVuSans.ttf",                 // DejaVu Sans
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",     // DejaVu Sans (Ubuntu)
+        "/usr/share/fonts/TTF/LiberationSans-Regular.ttf",     // Liberation Sans
+        "/usr/share/fonts/liberation/LiberationSans-Regular.ttf", // Liberation Sans (alt path)
+        "/System/Library/Fonts/Arial.ttf",                     // macOS
+        "C:\\Windows\\Fonts\\arial.ttf"                        // Windows
+    };
+
+    for (const auto& fontPath : systemFontPaths) {
+        if (loadFont("default", fontPath, 32.0f)) {  // Larger size for better readability
+            setFont("default");
+            return true;
+        }
+    }
+
+    // If no system font found, just use SDL debug font
+    return false;
+}
+
+std::pair<int, int> Graphics::getTextSize(const std::string& text) {
+    if (!current_font_) {
+        // Use SDL3 debug font sizing (8x8 pixels per character)
+        const int charWidth = SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE;
+        const int charHeight = SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE;
+
+        int width = static_cast<int>(text.length()) * charWidth;
+        int height = charHeight;
+
+        return {width, height};
+    }
+
+    int width, height;
+    current_font_->getTextSize(text, &width, &height);
+    return {width, height};
+}
+
+// Additional print overloads
+void Graphics::print(const std::string& text, float x, float y, HorizontalAlign halign) {
+    if (!renderer_) return;
+
+    auto pos = calculateAlignedPosition(text, x, y, halign, VerticalAlign::Top);
+    print(text, pos.first, pos.second);
+}
+
+void Graphics::print(const std::string& text, float x, float y, HorizontalAlign halign, VerticalAlign valign) {
+    if (!renderer_) return;
+
+    auto pos = calculateAlignedPosition(text, x, y, halign, valign);
+    print(text, pos.first, pos.second);
+}
+
+void Graphics::print(const std::string& text, float x, float y, const std::string& align) {
+    if (!renderer_) return;
+
+    auto alignment = parseAlignment(align);
+    auto pos = calculateAlignedPosition(text, x, y, alignment.first, alignment.second);
+    print(text, pos.first, pos.second);
+}
+
+void Graphics::printAligned(const std::string& text, float x, float y, float width, float height, const std::string& align) {
+    auto alignment = parseAlignment(align);
+    printAligned(text, x, y, width, height, alignment.first, alignment.second);
+}
+
+void Graphics::printAligned(const std::string& text, float x, float y, float width, float height, HorizontalAlign halign, VerticalAlign valign) {
+    if (!renderer_) return;
+
+    auto pos = calculateAlignedPosition(text, x, y, width, height, halign, valign);
+    print(text, pos.first, pos.second);
 }
 
 void Graphics::printf(const std::string& text, float x, float y, float limit, const std::string& align) {
@@ -336,5 +487,92 @@ void Graphics::scale(float sx, float sy) {
 void Graphics::applyTransform() {
     // Transform application would be implemented here
 }
+
+// Text alignment helper functions
+std::pair<HorizontalAlign, VerticalAlign> Graphics::parseAlignment(const std::string& align) {
+    HorizontalAlign halign = HorizontalAlign::Left;
+    VerticalAlign valign = VerticalAlign::Top;
+
+    if (align.find("center") != std::string::npos) {
+        halign = HorizontalAlign::Center;
+    } else if (align.find("right") != std::string::npos) {
+        halign = HorizontalAlign::Right;
+    }
+
+    if (align.find("middle") != std::string::npos) {
+        valign = VerticalAlign::Middle;
+    } else if (align.find("bottom") != std::string::npos) {
+        valign = VerticalAlign::Bottom;
+    }
+
+    return {halign, valign};
+}
+
+std::pair<float, float> Graphics::calculateAlignedPosition(const std::string& text, float x, float y,
+                                                          HorizontalAlign halign, VerticalAlign valign) {
+    auto size = getTextSize(text);  // This now works with fallback
+    float alignedX = x;
+    float alignedY = y;
+
+    switch (halign) {
+        case HorizontalAlign::Center:
+            alignedX = x - size.first / 2.0f;
+            break;
+        case HorizontalAlign::Right:
+            alignedX = x - size.first;
+            break;
+        case HorizontalAlign::Left:
+        default:
+            break;
+    }
+
+    switch (valign) {
+        case VerticalAlign::Middle:
+            alignedY = y - size.second / 2.0f;
+            break;
+        case VerticalAlign::Bottom:
+            alignedY = y - size.second;
+            break;
+        case VerticalAlign::Top:
+        default:
+            break;
+    }
+
+    return {alignedX, alignedY};
+}
+
+std::pair<float, float> Graphics::calculateAlignedPosition(const std::string& text, float x, float y, float width, float height,
+                                                          HorizontalAlign halign, VerticalAlign valign) {
+    auto size = getTextSize(text);  // This now works with fallback
+    float alignedX = x;
+    float alignedY = y;
+
+    switch (halign) {
+        case HorizontalAlign::Center:
+            alignedX = x + (width - size.first) / 2.0f;
+            break;
+        case HorizontalAlign::Right:
+            alignedX = x + width - size.first;
+            break;
+        case HorizontalAlign::Left:
+        default:
+            break;
+    }
+
+    switch (valign) {
+        case VerticalAlign::Middle:
+            alignedY = y + (height - size.second) / 2.0f;
+            break;
+        case VerticalAlign::Bottom:
+            alignedY = y + height - size.second;
+            break;
+        case VerticalAlign::Top:
+        default:
+            break;
+    }
+
+    return {alignedX, alignedY};
+}
+
 
 } // namespace tsuki
