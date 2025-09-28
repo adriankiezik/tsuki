@@ -453,11 +453,11 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ env.VERSION }}
-        name: Tsuki ${{ env.VERSION }}
+        name: ${{ contains(env.VERSION, 'test') && '[TEST BUILD] ' || '' }}Tsuki ${{ env.VERSION }}
         body: |
           ## Tsuki ${{ env.VERSION }}
 
-          Cross-platform game engine binaries for Linux, macOS, and Windows.
+          ${{ contains(env.VERSION, 'test') && '⚠️ **Test Build** - This is a development build for testing cross-compilation. Use stable releases for production.' || 'Cross-platform game engine binaries for Linux, macOS, and Windows.' }}
 
           ### 📦 Downloads
 
@@ -481,7 +481,7 @@ jobs:
           Built with the optimized CI pipeline for reliable cross-platform compatibility.
         files: ./release-assets/*.zip
         draft: false
-        prerelease: ${{ contains(env.VERSION, 'alpha') || contains(env.VERSION, 'beta') || contains(env.VERSION, 'rc') }}
+        prerelease: ${{ contains(env.VERSION, 'alpha') || contains(env.VERSION, 'beta') || contains(env.VERSION, 'rc') || contains(env.VERSION, 'test') || contains(env.VERSION, 'dev') }}
         generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

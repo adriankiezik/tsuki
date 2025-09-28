@@ -18,7 +18,7 @@ std::string System::getProcessorCount() const {
 }
 
 std::string System::getVersion() const {
-    return std::string(PROJECT_NAME) + " " + VERSION;
+    return std::string(tsuki::PROJECT_NAME) + " " + tsuki::VERSION;
 }
 
 int System::getPowerInfo() const {

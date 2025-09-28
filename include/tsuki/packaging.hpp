@@ -39,6 +39,7 @@ private:
 
     // Cross-platform support
     static std::string getCacheDirectory();
+    static bool isDevelopmentBuild();
     static std::string getBinaryUrl(const std::string& platform, const std::string& arch);
     static std::string getCachedBinaryPath(const std::string& platform, const std::string& arch);
     static bool downloadBinary(const std::string& url, const std::string& output_path);

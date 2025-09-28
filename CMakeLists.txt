@@ -1,11 +1,13 @@
 cmake_minimum_required(VERSION 3.20)
-project(Tsuki VERSION 0.1.0 LANGUAGES C CXX)
+
+# Single version source of truth
+set(TSUKI_VERSION "0.1.1-test.1")
+
+project(Tsuki LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-# Build options
 
 # Generate version header from template
 configure_file(

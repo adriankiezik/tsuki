@@ -63,23 +63,28 @@ bool Packaging::createStandaloneExecutable(const std::string& engine_path,
         return false;
     }
 
-    // Copy engine
-    output << engine.rdbuf();
-
-    // Add separator and size marker
-    const char separator[] = "---TSUKI-GAME-BOUNDARY---";
-    output.write(separator, strlen(separator));
-
-    // Get game file size
+    // Read engine into memory
+    std::string engine_content((std::istreambuf_iterator<char>(engine)), std::istreambuf_iterator<char>());
+    
+    // Read game into memory
     game.seekg(0, std::ios::end);
     uint64_t game_size = game.tellg();
     game.seekg(0, std::ios::beg);
+    std::string game_content((std::istreambuf_iterator<char>(game)), std::istreambuf_iterator<char>());
 
-    // Write game size as binary
+
+    // Write engine
+    output.write(engine_content.data(), engine_content.size());
+
+    // Add separator
+    const char separator[] = "---TSUKI-GAME-BOUNDARY---";
+    output.write(separator, strlen(separator));
+
+    // Write game size as binary (little-endian)
     output.write(reinterpret_cast<const char*>(&game_size), sizeof(game_size));
 
-    // Copy game
-    output << game.rdbuf();
+    // Write game content
+    output.write(game_content.data(), game_content.size());
 
     engine.close();
     game.close();
@@ -120,9 +125,26 @@ bool Packaging::extractFromFusedExecutable(const std::string& executable_path,
     std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     file.close();
 
-    // Find boundary
+    // Find boundary (search from end to avoid collision with engine's embedded strings)
     const char separator[] = "---TSUKI-GAME-BOUNDARY---";
-    size_t boundary_pos = content.find(separator);
+    size_t boundary_pos = content.rfind(separator);
+    
+    // Additional safety: verify this is actually our boundary by checking the structure
+    if (boundary_pos != std::string::npos) {
+        size_t expected_game_start = boundary_pos + strlen(separator) + sizeof(uint64_t);
+        // Verify we have enough bytes for the structure and check ZIP header
+        if (expected_game_start + 4 <= content.size()) {
+            // Check if what follows looks like a ZIP file (starts with "PK")
+            if (content[expected_game_start] != 'P' || content[expected_game_start + 1] != 'K') {
+                // This might be a false boundary - search for the previous occurrence
+                size_t search_end = boundary_pos > 0 ? boundary_pos - 1 : 0;
+                if (search_end > 0) {
+                    std::string search_content = content.substr(0, search_end + 1);
+                    boundary_pos = search_content.rfind(separator);
+                }
+            }
+        }
+    }
     if (boundary_pos == std::string::npos) {
         std::cerr << "Error: No embedded game found in executable" << std::endl;
         return false;
@@ -305,9 +327,27 @@ bool Packaging::createStandaloneExecutable(const std::string& engine_path,
                                           const std::string& target_platform,
                                           const std::string& target_arch) {
 
-    if (target_platform == "linux") {
-        // Use local engine for Linux builds
+    // Use local engine for same-platform builds
+    std::string current_platform;
+#ifdef __APPLE__
+    current_platform = "macos";
+#elif defined(_WIN32)
+    current_platform = "windows";
+#else
+    current_platform = "linux";
+#endif
+
+    if (target_platform == current_platform) {
+        // Use local engine for same-platform builds
         return createStandaloneExecutable(engine_path, tsuki_file, output_path);
+    }
+
+    // For local development, you can disable cross-compilation
+    const char* disable_cross = getenv("TSUKI_DISABLE_CROSS_COMPILATION");
+    if (disable_cross && std::string(disable_cross) == "1") {
+        std::cerr << "Cross-compilation disabled by TSUKI_DISABLE_CROSS_COMPILATION=1" << std::endl;
+        std::cerr << "Building for current platform only (" << current_platform << ")" << std::endl;
+        return false;
     }
 
     std::cout << "Preparing cross-platform build for " << target_platform << " (" << target_arch << ")" << std::endl;
@@ -315,7 +355,11 @@ bool Packaging::createStandaloneExecutable(const std::string& engine_path,
     // Get or download the target platform engine
     std::string target_engine_path = getEngineBinaryPath(target_platform, target_arch);
     if (target_engine_path.empty()) {
-        std::cerr << "Failed to obtain " << target_platform << " engine binary" << std::endl;
+        std::cerr << "Failed to obtain " << target_platform << " (" << target_arch << ") engine binary" << std::endl;
+        std::cerr << "This could mean:" << std::endl;
+        std::cerr << "  - No release exists for this platform/architecture combination" << std::endl;
+        std::cerr << "  - Network connectivity issues" << std::endl;
+        std::cerr << "  - Invalid platform/architecture specified" << std::endl;
         return false;
     }
 
@@ -333,8 +377,15 @@ std::string Packaging::getCacheDirectory() {
     return cache_dir;
 }
 
+bool Packaging::isDevelopmentBuild() {
+    // This function is no longer used for blocking cross-compilation
+    // Kept for potential future use
+    return false;
+}
+
 std::string Packaging::getBinaryUrl(const std::string& platform, const std::string& arch) {
-    // GitHub releases URL structure
+    // Allow cross-compilation for all versions - let download failures handle missing releases
+
     // This can be overridden by environment variable TSUKI_RELEASES_URL
     const char* custom_url = getenv("TSUKI_RELEASES_URL");
 
@@ -342,16 +393,17 @@ std::string Packaging::getBinaryUrl(const std::string& platform, const std::stri
     if (custom_url) {
         base_url = std::string(custom_url);
     } else {
-        // Use the actual Tsuki repository
-        base_url = "https://github.com/adriankiezik/tsuki/releases/latest/download/";
+        // Use specific release tag instead of /latest/ to avoid version mismatches
+        base_url = "https://github.com/adriankiezik/tsuki/releases/download/v" + 
+                   std::string(TSUKI_VERSION) + "/";
     }
 
-    return base_url + "tsuki-v" + std::string(VERSION) + "-" + platform + "-" + arch + ".zip";
+    return base_url + "tsuki-v" + std::string(TSUKI_VERSION) + "-" + platform + "-" + arch + ".zip";
 }
 
 std::string Packaging::getCachedBinaryPath(const std::string& platform, const std::string& arch) {
     std::string cache_dir = getCacheDirectory();
-    return cache_dir + "/tsuki-v" + std::string(VERSION) + "-" + platform + "-" + arch + ".zip";
+    return cache_dir + "/tsuki-v" + std::string(TSUKI_VERSION) + "-" + platform + "-" + arch + ".zip";
 }
 
 bool Packaging::downloadBinary(const std::string& url, const std::string& output_path) {
@@ -413,6 +465,12 @@ std::string Packaging::getEngineBinaryPath(const std::string& platform, const st
         std::string url = getBinaryUrl(platform, arch);
 
         if (!downloadBinary(url, bundle_path)) {
+            std::cerr << "Failed to download engine binary from: " << url << std::endl;
+            std::cerr << "This could mean:" << std::endl;
+            std::cerr << "  - No release exists for version " << TSUKI_VERSION << std::endl;
+            std::cerr << "  - No " << platform << "-" << arch << " build available for this version" << std::endl;
+            std::cerr << "  - Network connectivity issues" << std::endl;
+            std::cerr << "Tip: Set TSUKI_DISABLE_CROSS_COMPILATION=1 to build for current platform only" << std::endl;
             return "";
         }
     }
