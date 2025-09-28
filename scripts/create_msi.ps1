@@ -82,6 +82,7 @@ $wxsTemplate = @'
 
     <Component Id="EnvironmentPathComponent" Directory="INSTALLFOLDER" Guid="A1234567-B123-C123-D123-123456789ABC">
       <Environment Id="PATH" Name="PATH" Value="[INSTALLFOLDER]" Permanent="no" Part="last" Action="set" System="yes" />
+      <RegistryValue Root="HKLM" Key="Software\Tsuki\GameEngine" Name="PathInstalled" Type="integer" Value="1" KeyPath="yes" />
     </Component>
   </Product>
 </Wix>
