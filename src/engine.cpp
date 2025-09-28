@@ -3,6 +3,10 @@
 #include <iostream>
 #include <cstdlib>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #ifdef TSUKI_HAS_SDL_IMAGE
 #include <SDL3_image/SDL_image.h>
 #endif
@@ -39,7 +43,11 @@ bool Engine::init() {
             std::cout << "Trying audio driver: " << audio_drivers[i] << std::endl;
             
             // Set the audio driver environment variable
+#ifdef _WIN32
+            SetEnvironmentVariableA("SDL_AUDIODRIVER", audio_drivers[i]);
+#else
             setenv("SDL_AUDIODRIVER", audio_drivers[i], 1);
+#endif
             
             if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS)) {
                 std::cout << "SDL initialized successfully with " << audio_drivers[i] << " audio driver" << std::endl;
@@ -53,7 +61,11 @@ bool Engine::init() {
         }
         
         // Clean up environment variable
+#ifdef _WIN32
+        SetEnvironmentVariableA("SDL_AUDIODRIVER", nullptr);
+#else
         unsetenv("SDL_AUDIODRIVER");
+#endif
         
         // If all audio drivers fail, fall back to video-only
         if (!audio_initialized) {
