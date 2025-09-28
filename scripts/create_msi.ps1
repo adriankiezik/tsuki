@@ -80,7 +80,7 @@ $wxsTemplate = @'
       </Component>
     </ComponentGroup>
 
-    <Component Id="EnvironmentPathComponent" Directory="INSTALLFOLDER" Guid="*">
+    <Component Id="EnvironmentPathComponent" Directory="INSTALLFOLDER" Guid="A1234567-B123-C123-D123-123456789ABC">
       <Environment Id="PATH" Name="PATH" Value="[INSTALLFOLDER]" Permanent="no" Part="last" Action="set" System="yes" />
     </Component>
   </Product>
