@@ -2,6 +2,7 @@
 #include <tsuki/packaging.hpp>
 #include <tsuki/version.hpp>
 #include <tsuki/platform.hpp>
+#include <zip.h>
 #include <iostream>
 #include <filesystem>
 #include <fstream>
@@ -19,6 +20,11 @@ void printUsage(const char* program_name) {
     std::cout << tsuki::PROJECT_NAME << " Game Engine v" << tsuki::VERSION << "\n";
     std::cout << "Usage:\n\n";
 
+    std::cout << "  Creating projects:\n";
+    std::cout << "    " << program_name << " new <name>                              Create new game project\n";
+    std::cout << "    " << program_name << " new <name> --template minimal           Create minimal project\n";
+    std::cout << "    " << program_name << " new <name> --no-intellisense            Skip IntelliSense setup\n\n";
+
     std::cout << "  Running games:\n";
     std::cout << "    " << program_name << " <game_directory>     Run a game from directory\n";
     std::cout << "    " << program_name << " <game.tsuki>        Run a .tsuki game file\n";
@@ -35,6 +41,8 @@ void printUsage(const char* program_name) {
     std::cout << "    " << program_name << " --version           Show version\n\n";
 
     std::cout << "Examples:\n";
+    std::cout << "  " << program_name << " new mygame                           # Create new project with starter template\n";
+    std::cout << "  " << program_name << " new mygame --template minimal        # Create minimal project\n";
     std::cout << "  " << program_name << " mygame/                              # Run game from directory\n";
     std::cout << "  " << program_name << " mygame.tsuki                         # Run packaged game\n";
     std::cout << "  " << program_name << " mygame                               # Auto-detect mygame.tsuki\n";
@@ -48,6 +56,334 @@ void printVersion() {
     std::cout << tsuki::PROJECT_NAME << " Game Engine v" << tsuki::VERSION << "\n";
     std::cout << "Built with C++23, SDL3, and Lua 5.4\n";
     std::cout << "Packaging support with libzip\n";
+}
+
+// Helper function to create minimal main.lua template
+std::string getMinimalTemplate(const std::string& project_name) {
+    return R"(-- )" + project_name + R"( - A Tsuki Game
+-- Created with Tsuki Engine
+
+function tsuki.load()
+    -- This function is called once when the game starts
+    tsuki.window.setTitle(")" + project_name + R"(")
+end
+
+function tsuki.update(dt)
+    -- This function is called every frame
+    -- dt is the time in seconds since the last frame
+end
+
+function tsuki.draw()
+    -- This function is called every frame to render graphics
+
+    -- Clear the screen with a dark background
+    tsuki.graphics.clear(0.1, 0.1, 0.3, 1.0)
+
+    -- Draw some sample text
+    tsuki.graphics.setColor(1.0, 1.0, 1.0, 1.0)
+    tsuki.graphics.print("Welcome to )" + project_name + R"(!", 10, 10)
+    tsuki.graphics.print("Edit main.lua to start building your game", 10, 30)
+
+    -- Present the rendered frame to the screen
+    tsuki.graphics.present()
+end
+)";
+}
+
+// Helper function to copy file
+bool copyFile(const std::string& src, const std::string& dest) {
+    try {
+        std::filesystem::copy_file(src, dest, std::filesystem::copy_options::overwrite_existing);
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Error copying file: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+// Helper function to copy directory recursively
+bool copyDirectory(const std::string& src, const std::string& dest) {
+    try {
+        std::filesystem::copy(src, dest,
+            std::filesystem::copy_options::recursive |
+            std::filesystem::copy_options::overwrite_existing);
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Error copying directory: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+// Helper function to create .luarc.json configuration
+bool createLuarcConfig(const std::string& project_dir) {
+    std::string config_content = R"({
+    "Lua.runtime.version": "Lua 5.4",
+    "Lua.diagnostics.globals": ["tsuki"],
+    "Lua.workspace.checkThirdParty": false,
+    "Lua.workspace.library": ["tsuki-definitions.lua"]
+})";
+
+    std::string config_path = project_dir + "/.luarc.json";
+    std::ofstream config_file(config_path);
+    if (!config_file) {
+        return false;
+    }
+
+    config_file << config_content;
+    config_file.close();
+
+    // Verify the file was created successfully
+    return std::filesystem::exists(config_path);
+}
+
+// Helper function to download and extract IntelliSense from GitHub releases
+bool downloadIntelliSenseFromGitHub(const std::string& project_dir) {
+    // Construct GitHub release URL
+    std::string version = tsuki::VERSION;
+    std::string github_url = "https://github.com/adriankiezik/tsuki/releases/download/v" +
+                            version + "/tsuki-intellisense-v" + version + ".zip";
+
+    // Create temporary directory for download
+    std::string temp_dir = std::filesystem::temp_directory_path().string();
+    std::string zip_path = temp_dir + "/tsuki-intellisense-" + version + ".zip";
+
+    // Download the zip file using curl (silent)
+    std::string curl_cmd = "curl -s -L -o \"" + zip_path + "\" \"" + github_url + "\" 2>/dev/null";
+    int result = system(curl_cmd.c_str());
+
+    if (result != 0) {
+        return false;
+    }
+
+    // Check if file was downloaded successfully
+    if (!std::filesystem::exists(zip_path)) {
+        return false;
+    }
+
+    // Extract tsuki-definitions.lua from the zip file
+    // Create temporary extraction directory
+    std::string extract_dir = temp_dir + "/tsuki-intellisense-extract-" + std::to_string(getpid());
+
+    try {
+        std::filesystem::create_directories(extract_dir);
+
+        // Use libzip to extract (same library used in packaging.cpp)
+        zip_t* archive = zip_open(zip_path.c_str(), ZIP_RDONLY, nullptr);
+        if (!archive) {
+            std::filesystem::remove_all(extract_dir);
+            std::filesystem::remove(zip_path);
+            return false;
+        }
+
+        // Look for tsuki-definitions.lua in the zip
+        zip_int64_t num_entries = zip_get_num_entries(archive, 0);
+        bool found_definitions = false;
+
+        for (zip_int64_t i = 0; i < num_entries; i++) {
+            const char* name = zip_get_name(archive, i, 0);
+            if (name && std::string(name).find("tsuki-definitions.lua") != std::string::npos) {
+                // Extract this file
+                zip_file_t* file = zip_fopen_index(archive, i, 0);
+                if (file) {
+                    std::string output_path = project_dir + "/tsuki-definitions.lua";
+                    std::ofstream output(output_path, std::ios::binary);
+
+                    if (output) {
+                        char buffer[8192];
+                        zip_int64_t bytes_read;
+                        while ((bytes_read = zip_fread(file, buffer, sizeof(buffer))) > 0) {
+                            output.write(buffer, bytes_read);
+                        }
+                        output.close();
+                        found_definitions = true;
+                    }
+
+                    zip_fclose(file);
+                }
+                break;
+            }
+        }
+
+        zip_close(archive);
+
+        // Cleanup
+        std::filesystem::remove_all(extract_dir);
+        std::filesystem::remove(zip_path);
+
+        return found_definitions;
+
+    } catch (const std::exception& e) {
+        std::filesystem::remove_all(extract_dir);
+        std::filesystem::remove(zip_path);
+        return false;
+    }
+}
+
+// Helper function to get executable directory
+std::string getExecutableDir() {
+    try {
+        return std::filesystem::canonical("/proc/self/exe").parent_path().string();
+    } catch (...) {
+        return std::filesystem::current_path().string();
+    }
+}
+
+// Helper function to set up intellisense files
+bool setupIntelliSense(const std::string& project_dir, bool skip_intellisense) {
+    if (skip_intellisense) {
+        return true;
+    }
+
+    // Get executable directory to look for definitions relative to the executable
+    std::string exe_dir = getExecutableDir();
+
+    // Look for tsuki-definitions.lua relative to the executable location
+    std::vector<std::string> possible_paths = {
+        exe_dir + "/dist/tsuki-definitions.lua",
+        exe_dir + "/../dist/tsuki-definitions.lua",
+        exe_dir + "/../../dist/tsuki-definitions.lua",
+        exe_dir + "/tsuki-definitions.lua",
+        "/usr/local/share/tsuki/tsuki-definitions.lua",
+        "/usr/share/tsuki/tsuki-definitions.lua"
+    };
+
+    std::string definitions_path;
+    for (const auto& path : possible_paths) {
+        if (std::filesystem::exists(path)) {
+            definitions_path = path;
+            break;
+        }
+    }
+
+    bool definitions_available = false;
+
+    if (!definitions_path.empty()) {
+        // Copy local definitions file
+        if (copyFile(definitions_path, project_dir + "/tsuki-definitions.lua")) {
+            definitions_available = true;
+        }
+    }
+
+    // If no local definitions found, try downloading from GitHub
+    if (!definitions_available) {
+        definitions_available = downloadIntelliSenseFromGitHub(project_dir);
+    }
+
+    if (!definitions_available) {
+        std::cout << "Warning: Could not find tsuki-definitions.lua" << std::endl;
+        std::cout << "IntelliSense may not work properly. You can:" << std::endl;
+        std::cout << "  1. Copy tsuki-definitions.lua to your project manually" << std::endl;
+        std::cout << "  2. Download from GitHub releases" << std::endl;
+        std::cout << "\nCurrent link address is" << std::endl;
+        std::cout << "https://github.com/adriankiezik/tsuki/releases/download/v" << tsuki::VERSION << "/tsuki-intellisense-v" << tsuki::VERSION << ".zip" << std::endl;
+        std::cout << "for this version." << std::endl;
+        return true; // Don't fail the entire project creation
+    }
+
+    // Create .luarc.json - always try to create it if we have definitions
+    std::string config_content = R"({
+    "Lua.runtime.version": "Lua 5.4",
+    "Lua.diagnostics.globals": ["tsuki"],
+    "Lua.workspace.checkThirdParty": false,
+    "Lua.workspace.library": ["tsuki-definitions.lua"]
+})";
+
+    std::string config_path = project_dir + "/.luarc.json";
+    std::ofstream config_file(config_path);
+    if (!config_file) {
+        std::cout << "Warning: Failed to create .luarc.json" << std::endl;
+        return true; // Don't fail the entire project creation
+    }
+
+    config_file << config_content;
+    config_file.close();
+
+    // Verify the file was created successfully
+    if (!std::filesystem::exists(config_path)) {
+        std::cout << "Warning: .luarc.json file was not created" << std::endl;
+    }
+
+    return true;
+}
+
+// Main function to create a new project
+int createNewProject(const std::string& project_name, const std::string& template_type, bool skip_intellisense) {
+    std::cout << "Creating new Tsuki project: " << project_name << std::endl;
+
+    // Validate project name
+    if (project_name.empty()) {
+        std::cerr << "Error: Project name cannot be empty" << std::endl;
+        return 1;
+    }
+
+    // Check if directory already exists
+    if (std::filesystem::exists(project_name)) {
+        std::cerr << "Error: Directory '" << project_name << "' already exists!" << std::endl;
+        return 1;
+    }
+
+    // Create project directory
+    try {
+        std::filesystem::create_directory(project_name);
+        std::cout << "✓ Created project directory: " << project_name << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Error: Cannot create directory '" << project_name << "': " << e.what() << std::endl;
+        return 1;
+    }
+
+    // Create main.lua based on template
+    std::string main_lua_path = project_name + "/main.lua";
+
+    if (template_type == "starter") {
+        // Copy from examples/starter
+        std::string starter_path = "examples/starter/main.lua";
+        if (std::filesystem::exists(starter_path)) {
+            if (!copyFile(starter_path, main_lua_path)) {
+                std::cerr << "Error: Failed to copy starter template" << std::endl;
+                std::filesystem::remove_all(project_name);
+                return 1;
+            }
+            std::cout << "✓ Created main.lua from starter template" << std::endl;
+        } else {
+            // Fallback to minimal if starter not found
+            std::cout << "Warning: Starter template not found, using minimal template" << std::endl;
+            std::ofstream main_file(main_lua_path);
+            if (!main_file) {
+                std::cerr << "Error: Cannot create main.lua" << std::endl;
+                std::filesystem::remove_all(project_name);
+                return 1;
+            }
+            main_file << getMinimalTemplate(project_name);
+            std::cout << "✓ Created main.lua from minimal template" << std::endl;
+        }
+    } else {
+        // Create minimal template
+        std::ofstream main_file(main_lua_path);
+        if (!main_file) {
+            std::cerr << "Error: Cannot create main.lua" << std::endl;
+            std::filesystem::remove_all(project_name);
+            return 1;
+        }
+        main_file << getMinimalTemplate(project_name);
+        std::cout << "✓ Created main.lua from minimal template" << std::endl;
+    }
+
+    // Set up IntelliSense
+    if (!setupIntelliSense(project_name, skip_intellisense)) {
+        // IntelliSense setup failed, but continue with project creation
+        std::cout << "Warning: IntelliSense setup incomplete" << std::endl;
+    }
+
+    std::cout << "\n✅ Project '" << project_name << "' created successfully!" << std::endl;
+    std::cout << "\nNext steps:" << std::endl;
+    std::cout << "  cd " << project_name << std::endl;
+    std::cout << "  tsuki ." << std::endl;
+    std::cout << "\nFor VSCode IntelliSense:" << std::endl;
+    std::cout << "  1. Install the 'Lua' extension by sumneko" << std::endl;
+    std::cout << "  2. Open the project folder in VSCode" << std::endl;
+    std::cout << "  3. IntelliSense should work automatically!" << std::endl;
+
+    return 0;
 }
 
 int runGame(const std::string& game_path) {
@@ -99,6 +435,37 @@ int main(int argc, char* argv[]) {
     if (arg == "--version" || arg == "-v") {
         printVersion();
         return 0;
+    }
+
+    // Handle new project command
+    if (arg == "new") {
+        if (argc < 3) {
+            std::cerr << "Usage: " << argv[0] << " new <project_name> [--template starter|minimal] [--no-intellisense]" << std::endl;
+            return 1;
+        }
+
+        std::string project_name = argv[2];
+        std::string template_type = "starter"; // default template
+        bool skip_intellisense = false;
+
+        // Parse additional arguments
+        for (int i = 3; i < argc; i++) {
+            std::string current_arg = argv[i];
+            if (current_arg == "--template" && i + 1 < argc) {
+                template_type = argv[++i];
+                if (template_type != "starter" && template_type != "minimal") {
+                    std::cerr << "Error: Invalid template '" << template_type << "'. Valid options: starter, minimal" << std::endl;
+                    return 1;
+                }
+            } else if (current_arg == "--no-intellisense") {
+                skip_intellisense = true;
+            } else {
+                std::cerr << "Error: Unknown option '" << current_arg << "'" << std::endl;
+                return 1;
+            }
+        }
+
+        return createNewProject(project_name, template_type, skip_intellisense);
     }
 
     // Handle packaging command
