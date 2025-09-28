@@ -40,16 +40,16 @@ Write-Host "Creating MSI installer for version: $cleanVersion"
 $productGuid = [System.Guid]::NewGuid().ToString().ToUpper()
 $upgradeGuid = "12345678-1234-5678-9ABC-123456789ABC"  # Keep constant for upgrades
 
-# Create WiX source file
-$wxsContent = @"
+# Create WiX source file using string replacement to avoid PowerShell variable expansion issues
+$wxsTemplate = @'
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <Product Id="$productGuid"
+  <Product Id="PRODUCT_GUID_PLACEHOLDER"
            Name="Tsuki Game Engine"
            Language="1033"
-           Version="$cleanVersion"
+           Version="VERSION_PLACEHOLDER"
            Manufacturer="Tsuki Engine Project"
-           UpgradeCode="$upgradeGuid">
+           UpgradeCode="UPGRADE_GUID_PLACEHOLDER">
 
     <Package InstallerVersion="200"
              Compressed="yes"
@@ -73,10 +73,10 @@ $wxsContent = @"
 
     <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
       <Component Id="tsuki.exe" Guid="*">
-        <File Id="tsuki.exe" Source="$BundleDir\tsuki.exe" KeyPath="yes" />
+        <File Id="tsuki.exe" Source="$(var.BundleDir)\tsuki.exe" KeyPath="yes" />
       </Component>
       <Component Id="tsuki.bat" Guid="*">
-        <File Id="tsuki.bat" Source="$BundleDir\tsuki.bat" />
+        <File Id="tsuki.bat" Source="$(var.BundleDir)\tsuki.bat" />
       </Component>
     </ComponentGroup>
 
@@ -85,21 +85,51 @@ $wxsContent = @"
     </Component>
   </Product>
 </Wix>
-"@
+'@
+
+# Replace placeholders
+$wxsContent = $wxsTemplate.Replace("PRODUCT_GUID_PLACEHOLDER", $productGuid)
+$wxsContent = $wxsContent.Replace("VERSION_PLACEHOLDER", $cleanVersion)
+$wxsContent = $wxsContent.Replace("UPGRADE_GUID_PLACEHOLDER", $upgradeGuid)
+
+# Get absolute paths
+$absoluteBundleDir = Resolve-Path $BundleDir -ErrorAction Stop
+$absoluteOutputFile = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputFile)
+
+Write-Host "Bundle directory: $absoluteBundleDir"
+Write-Host "Output file: $absoluteOutputFile"
+
+# Verify files exist
+$tsukiExe = Join-Path $absoluteBundleDir "tsuki.exe"
+$tsukiBat = Join-Path $absoluteBundleDir "tsuki.bat"
+
+if (-not (Test-Path $tsukiExe)) {
+    Write-Error "tsuki.exe not found at: $tsukiExe"
+    exit 1
+}
+
+if (-not (Test-Path $tsukiBat)) {
+    Write-Error "tsuki.bat not found at: $tsukiBat"
+    exit 1
+}
+
+Write-Host "✅ Found required files:"
+Write-Host "  tsuki.exe: $tsukiExe"
+Write-Host "  tsuki.bat: $tsukiBat"
 
 # Write WiX source
 $wxsContent | Out-File -FilePath "installer.wxs" -Encoding utf8
 
-# Compile and link
+# Compile and link with absolute paths
 Write-Host "Compiling WiX source..."
-& candle.exe installer.wxs
+& candle.exe installer.wxs -dBundleDir="$absoluteBundleDir"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "WiX compilation failed"
     exit 1
 }
 
 Write-Host "Linking MSI..."
-& light.exe installer.wixobj -o $OutputFile
+& light.exe installer.wixobj -o "$absoluteOutputFile"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "WiX linking failed"
     exit 1

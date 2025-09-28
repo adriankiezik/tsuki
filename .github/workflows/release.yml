@@ -373,7 +373,8 @@ jobs:
         path: ./build/
 
     - name: Create bundle directory
-      run: mkdir -p release-bundle
+      shell: powershell
+      run: New-Item -ItemType Directory -Path "release-bundle" -Force
 
     - name: Bundle Windows executable
       shell: bash
@@ -412,6 +413,17 @@ jobs:
     - name: Create MSI installer
       shell: powershell
       run: |
+        # Verify release-bundle directory exists
+        if (-not (Test-Path "release-bundle")) {
+          Write-Error "release-bundle directory not found. Available directories:"
+          Get-ChildItem -Directory | ForEach-Object { Write-Host "  $($_.Name)" }
+          exit 1
+        }
+
+        # List contents of release-bundle
+        Write-Host "Contents of release-bundle:"
+        Get-ChildItem "release-bundle" | ForEach-Object { Write-Host "  $($_.Name)" }
+
         # Run the PowerShell script to create MSI
         & ".\scripts\create_msi.ps1" -Version "${{ env.VERSION }}" -BundleDir "release-bundle" -OutputFile "tsuki-${{ env.VERSION }}-windows-x64.msi"
 
