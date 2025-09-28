@@ -133,7 +133,15 @@ int main(int argc, char* argv[]) {
 
         std::string tsuki_file = argv[2];
         std::string output_exe = argv[3];
-        std::string target_platform = "linux";  // default to current platform
+        // Default to current platform
+        std::string target_platform;
+#ifdef __APPLE__
+        target_platform = "macos";
+#elif defined(_WIN32)
+        target_platform = "windows";
+#else
+        target_platform = "linux";
+#endif
         std::string target_arch = "x64";        // default architecture
 
         // Parse additional arguments

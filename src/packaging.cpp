@@ -5,6 +5,7 @@
 #include <fstream>
 #include <filesystem>
 #include <cstring>
+#include <algorithm>
 
 namespace tsuki {
 
@@ -453,14 +454,24 @@ std::string Packaging::getEngineBinaryPath(const std::string& platform, const st
         engine_path += ".exe";
     }
 
-    // Check if we already have the extracted binary
-    if (std::filesystem::exists(engine_path)) {
+    // Check if we already have a valid cached binary
+    if (std::filesystem::exists(engine_path) && isCacheValid(platform, arch)) {
         std::cout << "Using cached " << platform << " engine: " << engine_path << std::endl;
         return engine_path;
     }
 
-    // Check if we have the bundle cached
-    if (!std::filesystem::exists(bundle_path)) {
+    // Check if we need to download/re-download the bundle
+    bool need_download = !std::filesystem::exists(bundle_path);
+    if (!need_download) {
+        // Check if remote version is newer
+        std::string url = getBinaryUrl(platform, arch);
+        need_download = checkRemoteVersionNewer(url, bundle_path);
+        if (need_download) {
+            std::cout << "Remote version is newer, updating cached binary..." << std::endl;
+        }
+    }
+    
+    if (need_download) {
         std::cout << "Downloading " << platform << " (" << arch << ") engine binary..." << std::endl;
         std::string url = getBinaryUrl(platform, arch);
 
@@ -472,6 +483,11 @@ std::string Packaging::getEngineBinaryPath(const std::string& platform, const st
             std::cerr << "  - Network connectivity issues" << std::endl;
             std::cerr << "Tip: Set TSUKI_DISABLE_CROSS_COMPILATION=1 to build for current platform only" << std::endl;
             return "";
+        }
+        
+        // If we re-downloaded, we need to re-extract
+        if (std::filesystem::exists(extract_dir)) {
+            std::filesystem::remove_all(extract_dir);
         }
     }
 
@@ -497,6 +513,109 @@ std::string Packaging::getEngineBinaryPath(const std::string& platform, const st
 
     std::cout << "Successfully prepared " << platform << " engine: " << engine_path << std::endl;
     return engine_path;
+}
+
+bool Packaging::isCacheValid(const std::string& platform, const std::string& arch) {
+    std::string bundle_path = getCachedBinaryPath(platform, arch);
+    std::string extract_dir = getCacheDirectory() + "/extracted/" + platform + "-" + arch;
+    std::string engine_path = extract_dir + "/tsuki";
+    
+    if (platform == "windows") {
+        engine_path += ".exe";
+    }
+    
+    // If either bundle or extracted binary doesn't exist, cache is invalid
+    if (!std::filesystem::exists(bundle_path) || !std::filesystem::exists(engine_path)) {
+        return false;
+    }
+    
+    // Check if remote version is newer
+    std::string url = getBinaryUrl(platform, arch);
+    return !checkRemoteVersionNewer(url, bundle_path);
+}
+
+bool Packaging::checkRemoteVersionNewer(const std::string& url, const std::string& cached_path) {
+    if (!std::filesystem::exists(cached_path)) {
+        return true; // No cached file, so remote is "newer"
+    }
+    
+    // Get local file modification time
+    auto local_time = std::filesystem::last_write_time(cached_path);
+    
+    // Use curl to get remote file headers (Last-Modified or ETag)
+    std::string temp_file = getCacheDirectory() + "/temp_headers";
+    std::string curl_cmd = "curl -s -I -L \"" + url + "\" > \"" + temp_file + "\" 2>/dev/null";
+    
+    int result = system(curl_cmd.c_str());
+    if (result != 0) {
+        // If we can't check remote, assume cache is valid (offline mode)
+        std::filesystem::remove(temp_file);
+        return false;
+    }
+    
+    std::ifstream headers_file(temp_file);
+    if (!headers_file) {
+        std::filesystem::remove(temp_file);
+        return false;
+    }
+    
+    std::string line;
+    std::string last_modified;
+    std::string etag;
+    
+    while (std::getline(headers_file, line)) {
+        // Convert to lowercase for case-insensitive comparison
+        std::string lower_line = line;
+        std::transform(lower_line.begin(), lower_line.end(), lower_line.begin(), ::tolower);
+        
+        if (lower_line.find("last-modified:") == 0) {
+            last_modified = line.substr(15); // Skip "last-modified: "
+            // Remove trailing whitespace and carriage returns
+            while (!last_modified.empty() && 
+                   (last_modified.back() == ' ' || last_modified.back() == '\r' || last_modified.back() == '\n')) {
+                last_modified.pop_back();
+            }
+        } else if (lower_line.find("etag:") == 0) {
+            etag = line.substr(6); // Skip "etag: "
+            // Remove trailing whitespace and carriage returns
+            while (!etag.empty() && 
+                   (etag.back() == ' ' || etag.back() == '\r' || etag.back() == '\n')) {
+                etag.pop_back();
+            }
+        }
+    }
+    
+    headers_file.close();
+    std::filesystem::remove(temp_file);
+    
+    // Store ETag or Last-Modified for comparison
+    std::string metadata_file = cached_path + ".metadata";
+    
+    // Check if we have stored metadata
+    if (std::filesystem::exists(metadata_file)) {
+        std::ifstream meta_file(metadata_file);
+        std::string stored_etag;
+        if (std::getline(meta_file, stored_etag)) {
+            meta_file.close();
+            
+            // Compare ETags if available
+            if (!etag.empty() && !stored_etag.empty()) {
+                return etag != stored_etag;
+            }
+        }
+    }
+    
+    // Store current ETag/Last-Modified for future comparisons
+    if (!etag.empty() || !last_modified.empty()) {
+        std::ofstream meta_file(metadata_file);
+        if (meta_file) {
+            meta_file << (etag.empty() ? last_modified : etag) << std::endl;
+            meta_file.close();
+        }
+    }
+    
+    // If we can't determine, assume cache is valid to avoid unnecessary downloads
+    return false;
 }
 
 } // namespace tsuki

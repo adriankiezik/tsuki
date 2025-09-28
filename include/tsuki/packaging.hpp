@@ -45,6 +45,10 @@ private:
     static bool downloadBinary(const std::string& url, const std::string& output_path);
     static bool extractBinaryBundle(const std::string& bundle_path, const std::string& extract_dir);
     static std::string getEngineBinaryPath(const std::string& platform, const std::string& arch);
+    
+    // Cache validation
+    static bool isCacheValid(const std::string& platform, const std::string& arch);
+    static bool checkRemoteVersionNewer(const std::string& url, const std::string& cached_path);
 };
 
 } // namespace tsuki

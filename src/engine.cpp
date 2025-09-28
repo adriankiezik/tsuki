@@ -1,6 +1,7 @@
 #include "tsuki/tsuki.hpp"
 #include <SDL3/SDL.h>
 #include <iostream>
+#include <cstdlib>
 
 #ifdef TSUKI_HAS_SDL_IMAGE
 #include <SDL3_image/SDL_image.h>
@@ -22,9 +23,47 @@ Engine& Engine::getInstance() {
 }
 
 bool Engine::init() {
-    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS)) {
-        std::cerr << "Failed to initialize SDL: " << SDL_GetError() << std::endl;
-        return false;
+    // Try multiple audio drivers in order of preference for Linux compatibility
+    const char* audio_drivers[] = {"pipewire", "pulse", "alsa", "oss", nullptr};
+    bool audio_initialized = false;
+    
+    // First try with default audio driver
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS)) {
+        std::cout << "SDL initialized successfully with default audio driver" << std::endl;
+        audio_initialized = true;
+    } else {
+        std::cerr << "Failed to initialize SDL with default audio driver: " << SDL_GetError() << std::endl;
+        
+        // Try specific audio drivers by setting environment variable
+        for (int i = 0; audio_drivers[i] != nullptr; i++) {
+            std::cout << "Trying audio driver: " << audio_drivers[i] << std::endl;
+            
+            // Set the audio driver environment variable
+            setenv("SDL_AUDIODRIVER", audio_drivers[i], 1);
+            
+            if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS)) {
+                std::cout << "SDL initialized successfully with " << audio_drivers[i] << " audio driver" << std::endl;
+                audio_initialized = true;
+                break;
+            } else {
+                std::cerr << "Failed with " << audio_drivers[i] << ": " << SDL_GetError() << std::endl;
+                // Need to quit SDL before trying again
+                SDL_Quit();
+            }
+        }
+        
+        // Clean up environment variable
+        unsetenv("SDL_AUDIODRIVER");
+        
+        // If all audio drivers fail, fall back to video-only
+        if (!audio_initialized) {
+            std::cerr << "All audio drivers failed, initializing without audio..." << std::endl;
+            if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
+                std::cerr << "Failed to initialize SDL: " << SDL_GetError() << std::endl;
+                return false;
+            }
+            std::cout << "SDL initialized successfully without audio support" << std::endl;
+        }
     }
 
 #ifdef TSUKI_HAS_SDL_IMAGE
