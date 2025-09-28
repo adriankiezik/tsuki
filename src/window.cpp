@@ -106,6 +106,13 @@ void Window::setVSync(bool enabled) {
     }
 }
 
+bool Window::setVSync(int vsync) {
+    if (renderer_) {
+        return SDL_SetRenderVSync(renderer_, vsync);
+    }
+    return false;
+}
+
 bool Window::getVSync() const {
     if (renderer_) {
         int vsync;

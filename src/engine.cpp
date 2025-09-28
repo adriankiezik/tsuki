@@ -126,6 +126,15 @@ bool Engine::init() {
         return false;
     }
 
+    // Try adaptive VSync first (allows higher FPS while preventing tearing)
+    // Fall back to regular VSync if adaptive isn't supported
+    if (!window_.setVSync(-1)) { // SDL_RENDERER_VSYNC_ADAPTIVE
+        std::cout << "Adaptive VSync not supported, falling back to regular VSync" << std::endl;
+        window_.setVSync(true);
+    } else {
+        std::cout << "Adaptive VSync enabled for smooth uncapped FPS" << std::endl;
+    }
+
     // Initialize subsystems
     if (!graphics_.init(window_.getRenderer())) {
         window_.shutdown();

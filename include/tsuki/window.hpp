@@ -36,6 +36,7 @@ public:
     bool isFullscreen() const;
 
     void setVSync(bool enabled);
+    bool setVSync(int vsync);  // New overload for advanced VSync modes
     bool getVSync() const;
 
     // Window state
