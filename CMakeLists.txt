@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 # Single version source of truth
-set(TSUKI_VERSION "0.1.0-test.2")
+set(TSUKI_VERSION "0.1.1")
 
 project(Tsuki LANGUAGES C CXX)
 

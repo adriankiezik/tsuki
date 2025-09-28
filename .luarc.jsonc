@@ -1,0 +1,8 @@
+{
+    "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+    "Lua.runtime.version": "Lua 5.4",
+    "Lua.diagnostics.globals": ["tsuki"],
+    "Lua.workspace.checkThirdParty": false,
+    "Lua.completion.enable": true,
+    "Lua.completion.callSnippet": "Replace"
+}

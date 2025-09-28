@@ -24,13 +24,8 @@ function tsuki.load()
     -- This function is called once when the game starts
     -- Set window title
     tsuki.window.setTitle("Tsuki Starter Example")
-
-    amogus()
 end
 
-function amogus()
-    erm()
-end
 
 function tsuki.update(dt)
     -- This function is called every frame

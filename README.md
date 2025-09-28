@@ -102,7 +102,14 @@ tsuki --fuse-all game.tsuki mygame
 - `tsuki --help` - Show help
 - `tsuki --version` - Show version
 
+## VSCode IntelliSense
+
+For autocomplete and type hints in VSCode:
+
+1. Install "Lua" extension by sumneko
+2. Run `make dist` to generate definitions
+3. IntelliSense is pre-configured in `examples/` directories
+
 ## Documentation
 
 - **Examples** - See `examples/` directory
-- **API Reference** - Coming soon

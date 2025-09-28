@@ -54,5 +54,9 @@ _deps/
 bin/
 lib/
 
+# Generated distribution files
+dist/
+releases/
+
 # AI tools
 .claude

@@ -1,7 +1,4 @@
 {
-    "Lua.diagnostics.globals": [
-        "tsuki"
-    ],
     "files.associations": {
         "atomic": "cpp",
         "bit": "cpp",
