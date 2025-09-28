@@ -357,6 +357,9 @@ jobs:
     runs-on: windows-latest
     needs: build
     steps:
+    - name: Checkout code for scripts
+      uses: actions/checkout@v4
+
     - name: Set version
       shell: bash
       run: |
@@ -397,9 +400,6 @@ jobs:
           ls -la build/
           exit 1
         fi
-
-    - name: Checkout code for scripts
-      uses: actions/checkout@v4
 
     - name: Install WiX Toolset
       shell: powershell
