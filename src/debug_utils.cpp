@@ -101,6 +101,11 @@ void DebugPrinter::printStackTrace(const std::string& trace) {
                 fmt::print(fg(fmt::color::dim_gray), "{}\n", cleaned_line);
             }
         }
+        // Show lines that come before the traceback header (the actual error message)
+        else if (!in_traceback && !cleaned_line.empty()) {
+            // This is the actual error message, show it prominently
+            fmt::print(fg(fmt::color::light_coral), "{}\n", cleaned_line);
+        }
     }
 
     // Add newline after complete error message and stack trace

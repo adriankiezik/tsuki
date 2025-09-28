@@ -14,6 +14,7 @@ function tsuki.load()
     tsuki.window.setTitle("Image Demo - Loading, Rotation & Scale")
 end
 
+
 function tsuki.update(dt)
     -- Continuously rotate the image
     rotation = rotation + dt * 90  -- 90 degrees per second

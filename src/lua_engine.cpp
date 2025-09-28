@@ -23,6 +23,55 @@ bool LuaEngine::init() {
     // Load standard libraries
     luaL_openlibs(L);
 
+    // Add our own debug.traceback function using Lua's C API
+    lua_getglobal(L, "debug");
+    if (lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+        lua_newtable(L);
+        lua_setglobal(L, "debug");
+        lua_getglobal(L, "debug");
+    }
+
+    // Add a working traceback function
+    lua_pushcfunction(L, [](lua_State* L) -> int {
+        const char* msg = luaL_optstring(L, 1, "");
+        int level = luaL_optinteger(L, 2, 1);
+
+        std::string result = msg;
+        result += "\nstack traceback:";
+
+        lua_Debug ar;
+        for (int i = level; i < level + 10; i++) {
+            if (!lua_getstack(L, i, &ar)) break;
+            if (!lua_getinfo(L, "Sln", &ar)) break;
+
+            if (ar.source && ar.currentline > 0) {
+                std::string source = ar.source;
+                if (source[0] == '@') source = source.substr(1);
+
+                // Extract filename
+                size_t lastSlash = source.find_last_of("/\\");
+                if (lastSlash != std::string::npos) {
+                    source = source.substr(lastSlash + 1);
+                }
+
+                result += "\n\t" + source + ":" + std::to_string(ar.currentline) + ":";
+                if (ar.name && strlen(ar.name) > 0) {
+                    result += " in function '" + std::string(ar.name) + "'";
+                } else if (ar.what && strcmp(ar.what, "main") == 0) {
+                    result += " in main chunk";
+                } else {
+                    result += " in function";
+                }
+            }
+        }
+
+        lua_pushstring(L, result.c_str());
+        return 1;
+    });
+    lua_setfield(L, -2, "traceback");
+    lua_pop(L, 1); // Remove debug table
+
     return true;
 }
 
@@ -126,7 +175,12 @@ bool LuaEngine::callFunction(const std::string& function_name) {
     return callLuaFunction(function_name);
 }
 
+
 void LuaEngine::setError(const std::string& error) {
+    setError(error, "", "");
+}
+
+void LuaEngine::setError(const std::string& error, const std::string& function_name, const std::string& file_context) {
     try {
         last_error_ = error;
 
@@ -134,28 +188,20 @@ void LuaEngine::setError(const std::string& error) {
         bool has_stack_trace = error.find("stack traceback:") != std::string::npos;
 
         if (has_stack_trace) {
-            // Error already contains stack trace, print the entire message in light red
-            fmt::print(fg(fmt::color::light_coral), "✗ {}\n", error);
-        } else {
-            // No stack trace in error, print error and generate one
-            DebugPrinter::printError(error);
+            // Error already contains stack trace, print the function name and then the full trace
+            if (!function_name.empty()) {
+                DebugPrinter::printError(fmt::format("Error in '{}':", function_name));
+            }
 
-            if (L) {
-                // Get stack trace using debug library
-                lua_getglobal(L, "debug");
-                if (!lua_isnil(L, -1)) {
-                    lua_getfield(L, -1, "traceback");
-                    if (lua_isfunction(L, -1)) {
-                        lua_call(L, 0, 1);
-                        if (lua_isstring(L, -1)) {
-                            DebugPrinter::printStackTrace(lua_tostring(L, -1));
-                        }
-                        lua_pop(L, 1); // Remove traceback result
-                    }
-                    lua_pop(L, 1); // Remove debug table
-                } else {
-                    lua_pop(L, 1); // Remove nil
-                }
+            // Parse and display the error with stack trace properly
+            DebugPrinter::printStackTrace(error);
+        } else {
+            // Show the original Lua error message prominently
+            if (!function_name.empty()) {
+                DebugPrinter::printError(fmt::format("Error in '{}':", function_name));
+                fmt::print(fg(fmt::color::light_coral), "{}\n", error);
+            } else {
+                DebugPrinter::printError(error);
             }
         }
     } catch (const std::exception& e) {
@@ -218,13 +264,70 @@ bool LuaEngine::callLuaFunction(const std::string& function_name, int args, int 
             }
         }
 
-        // Set up error handler for better error messages
-        lua_getglobal(L, "debug");
-        lua_getfield(L, -1, "traceback");
-        lua_remove(L, -2); // Remove debug table
-        int error_handler_index = lua_gettop(L) - args - 1;
+        // Set up error handler to capture complete stack traces using C API
+        lua_pushcfunction(L, [](lua_State* L) -> int {
+            const char* msg = lua_tostring(L, 1);
+            std::string original_error = msg ? msg : "Unknown error";
 
-        // Move error handler below function and args
+            std::string result = original_error + "\nstack traceback:";
+
+            lua_Debug ar;
+            bool first_frame = true;
+
+            // Start from level 1 to capture the actual error location
+            for (int level = 1; level <= 15; level++) {
+                if (!lua_getstack(L, level, &ar)) break;
+                if (!lua_getinfo(L, "Sln", &ar)) break;
+
+                // Skip C functions and internal frames
+                if (!ar.source || ar.currentline <= 0) continue;
+
+                std::string source = ar.source;
+                if (source[0] == '@') source = source.substr(1);
+
+                // Skip [C] functions
+                if (source.find("[C]") != std::string::npos) continue;
+
+                result += "\n\t";
+
+                // Extract filename from path
+                size_t lastSlash = source.find_last_of("/\\");
+                if (lastSlash != std::string::npos) {
+                    source = source.substr(lastSlash + 1);
+                }
+
+                result += source + ":" + std::to_string(ar.currentline) + ":";
+
+                // For the first frame (error location), include the original error message
+                if (first_frame && original_error.find(source + ":" + std::to_string(ar.currentline)) != std::string::npos) {
+                    // The original error already contains file:line info, just add function info
+                    if (ar.name && strlen(ar.name) > 0) {
+                        result += " in function '" + std::string(ar.name) + "'";
+                    } else if (ar.what && strcmp(ar.what, "main") == 0) {
+                        result += " in main chunk";
+                    } else {
+                        result += " in function";
+                    }
+                    first_frame = false;
+                } else {
+                    // For other frames or if no match, show full info
+                    if (ar.name && strlen(ar.name) > 0) {
+                        result += " in function '" + std::string(ar.name) + "'";
+                    } else if (ar.what && strcmp(ar.what, "main") == 0) {
+                        result += " in main chunk";
+                    } else {
+                        result += " in function";
+                    }
+                    first_frame = false;
+                }
+            }
+
+            lua_pushstring(L, result.c_str());
+            return 1;
+        });
+
+        // Move error handler to the correct position
+        int error_handler_index = lua_gettop(L) - args - 1;
         lua_insert(L, error_handler_index);
 
         // Call the function with error handler
@@ -241,8 +344,20 @@ bool LuaEngine::callLuaFunction(const std::string& function_name, int args, int 
 
             // Provide a meaningful function name even when empty
             std::string display_name = function_name.empty() ? "Lua function" : function_name;
-            std::string full_error = "Function '" + display_name + "' failed: " + error_msg;
-            setError(full_error);
+
+            // Extract file context from error message if available
+            std::string file_context;
+            size_t file_pos = error_msg.find(".lua:");
+            if (file_pos != std::string::npos) {
+                size_t start = error_msg.find_last_of("/\\", file_pos);
+                if (start == std::string::npos) start = 0; else start++;
+                size_t end = error_msg.find(":", file_pos + 5);
+                if (end != std::string::npos) {
+                    file_context = error_msg.substr(start, end - start);
+                }
+            }
+
+            setError(error_msg, display_name, file_context);
 
             lua_pop(L, 1); // Remove error message from stack
             return false;
@@ -306,13 +421,70 @@ bool LuaEngine::callLuaFunction(const std::string& function_name, const std::str
             }
         }
 
-        // Set up error handler for better error messages
-        lua_getglobal(L, "debug");
-        lua_getfield(L, -1, "traceback");
-        lua_remove(L, -2); // Remove debug table
-        int error_handler_index = lua_gettop(L) - args - 1;
+        // Set up error handler to capture complete stack traces using C API
+        lua_pushcfunction(L, [](lua_State* L) -> int {
+            const char* msg = lua_tostring(L, 1);
+            std::string original_error = msg ? msg : "Unknown error";
 
-        // Move error handler below function and args
+            std::string result = original_error + "\nstack traceback:";
+
+            lua_Debug ar;
+            bool first_frame = true;
+
+            // Start from level 1 to capture the actual error location
+            for (int level = 1; level <= 15; level++) {
+                if (!lua_getstack(L, level, &ar)) break;
+                if (!lua_getinfo(L, "Sln", &ar)) break;
+
+                // Skip C functions and internal frames
+                if (!ar.source || ar.currentline <= 0) continue;
+
+                std::string source = ar.source;
+                if (source[0] == '@') source = source.substr(1);
+
+                // Skip [C] functions
+                if (source.find("[C]") != std::string::npos) continue;
+
+                result += "\n\t";
+
+                // Extract filename from path
+                size_t lastSlash = source.find_last_of("/\\");
+                if (lastSlash != std::string::npos) {
+                    source = source.substr(lastSlash + 1);
+                }
+
+                result += source + ":" + std::to_string(ar.currentline) + ":";
+
+                // For the first frame (error location), include the original error message
+                if (first_frame && original_error.find(source + ":" + std::to_string(ar.currentline)) != std::string::npos) {
+                    // The original error already contains file:line info, just add function info
+                    if (ar.name && strlen(ar.name) > 0) {
+                        result += " in function '" + std::string(ar.name) + "'";
+                    } else if (ar.what && strcmp(ar.what, "main") == 0) {
+                        result += " in main chunk";
+                    } else {
+                        result += " in function";
+                    }
+                    first_frame = false;
+                } else {
+                    // For other frames or if no match, show full info
+                    if (ar.name && strlen(ar.name) > 0) {
+                        result += " in function '" + std::string(ar.name) + "'";
+                    } else if (ar.what && strcmp(ar.what, "main") == 0) {
+                        result += " in main chunk";
+                    } else {
+                        result += " in function";
+                    }
+                    first_frame = false;
+                }
+            }
+
+            lua_pushstring(L, result.c_str());
+            return 1;
+        });
+
+        // Move error handler to the correct position
+        int error_handler_index = lua_gettop(L) - args - 1;
         lua_insert(L, error_handler_index);
 
         // Call the function with error handler
@@ -330,8 +502,20 @@ bool LuaEngine::callLuaFunction(const std::string& function_name, const std::str
             // Use the provided display name for error reporting
             std::string final_display_name = display_name.empty() ?
                 (function_name.empty() ? "Lua function" : function_name) : display_name;
-            std::string full_error = "Function '" + final_display_name + "' failed: " + error_msg;
-            setError(full_error);
+
+            // Extract file context from error message if available
+            std::string file_context;
+            size_t file_pos = error_msg.find(".lua:");
+            if (file_pos != std::string::npos) {
+                size_t start = error_msg.find_last_of("/\\", file_pos);
+                if (start == std::string::npos) start = 0; else start++;
+                size_t end = error_msg.find(":", file_pos + 5);
+                if (end != std::string::npos) {
+                    file_context = error_msg.substr(start, end - start);
+                }
+            }
+
+            setError(error_msg, final_display_name, file_context);
 
             lua_pop(L, 1); // Remove error message from stack
             return false;

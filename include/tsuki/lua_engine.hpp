@@ -46,6 +46,7 @@ private:
     std::string last_error_;
 
     void setError(const std::string& error);
+    void setError(const std::string& error, const std::string& function_name, const std::string& file_context);
     bool callLuaFunction(const std::string& function_name, int args = 0, int results = 0);
     bool callLuaFunction(const std::string& function_name, const std::string& display_name, int args = 0, int results = 0);
 };
