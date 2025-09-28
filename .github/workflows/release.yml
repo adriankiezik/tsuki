@@ -1,14 +1,212 @@
-name: Create Release
+name: Release
 
 on:
   push:
     tags:
-      - 'v*.*.*'  # Triggers on version tags like v1.0.0
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        type: string
+      create_release:
+        description: 'Create GitHub release'
+        required: true
+        type: boolean
+        default: true
+
+# Grant necessary permissions for creating releases
+permissions:
+  contents: write
+  packages: read
 
 jobs:
-  create-release:
-    runs-on: ubuntu-latest
+  # Build using same optimized steps as build.yml (but skip the conditional check for releases)
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            cc: gcc
+            cxx: g++
+          - os: macos-latest
+            platform: macos
+            arch: x64
+            cc: clang
+            cxx: clang++
+          - os: windows-latest
+            platform: windows
+            arch: x64
+            cc: cl
+            cxx: cl
 
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 1
+
+    # Reuse all the caching and build optimizations from build.yml
+    - name: Cache submodules
+      uses: actions/cache@v4
+      with:
+        path: |
+          vendor/
+          .git/modules/
+        key: submodules-${{ runner.os }}-${{ hashFiles('.gitmodules') }}
+        restore-keys: |
+          submodules-${{ runner.os }}-
+
+    - name: Cache apt packages
+      if: matrix.os == 'ubuntu-latest'
+      uses: actions/cache@v4
+      with:
+        path: /var/cache/apt
+        key: apt-${{ runner.os }}-${{ hashFiles('.github/workflows/release.yml') }}
+        restore-keys: |
+          apt-${{ runner.os }}-
+
+    - name: Install build dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y --no-install-recommends \
+          build-essential cmake ninja-build ccache \
+          libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxinerama-dev libxi-dev \
+          libxss-dev libxxf86vm-dev libxfixes-dev libwayland-dev libxkbcommon-dev \
+          libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev
+
+    - name: Cache Homebrew
+      if: matrix.os == 'macos-latest'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/Library/Caches/Homebrew
+          /usr/local/Homebrew
+        key: brew-${{ runner.os }}-${{ hashFiles('.github/workflows/release.yml') }}
+        restore-keys: |
+          brew-${{ runner.os }}-
+
+    - name: Install build tools (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install ninja ccache
+
+    - name: Setup ccache
+      if: matrix.os != 'windows-latest'
+      uses: actions/cache@v4
+      with:
+        path: ~/.ccache
+        key: ccache-${{ matrix.os }}-${{ matrix.cc }}-${{ github.sha }}
+        restore-keys: |
+          ccache-${{ matrix.os }}-${{ matrix.cc }}-
+
+    - name: Configure ccache
+      if: matrix.os != 'windows-latest'
+      run: |
+        ccache --set-config=cache_dir=~/.ccache
+        ccache --set-config=max_size=500M
+        ccache --set-config=compression=true
+        ccache --zero-stats
+
+    - name: Cache CMake build
+      uses: actions/cache@v4
+      with:
+        path: |
+          build/
+          !build/tsuki*
+          !build/Release/
+        key: cmake-${{ matrix.os }}-${{ hashFiles('**/CMakeLists.txt', 'vendor/**') }}
+        restore-keys: |
+          cmake-${{ matrix.os }}-
+
+    - name: Configure CMake
+      shell: bash
+      env:
+        CC: ${{ matrix.cc }}
+        CXX: ${{ matrix.cxx }}
+      run: |
+        mkdir -p build
+        cd build
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE=OFF
+        elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+          # Configure for static linking and self-contained macOS binaries
+          cmake .. -GNinja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_VERBOSE_MAKEFILE=OFF \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+            -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=OFF \
+            -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
+            -DCMAKE_INSTALL_RPATH="@executable_path" \
+            -DBUILD_SHARED_LIBS=OFF
+        else
+          cmake .. -GNinja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_VERBOSE_MAKEFILE=OFF
+        fi
+
+    - name: Build
+      shell: bash
+      run: |
+        cd build
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          cmake --build . --config Release --parallel
+        elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+          ninja -j$(sysctl -n hw.logicalcpu)
+        else
+          ninja -j$(nproc)
+        fi
+
+    - name: Fix macOS library paths
+      if: matrix.os == 'macos-latest'
+      shell: bash
+      run: |
+        cd build
+        if [ -f tsuki ]; then
+          echo "📋 Checking tsuki dependencies:"
+          otool -L tsuki
+
+          echo "🔧 Fixing library paths..."
+          # Fix any @rpath references to use system libraries
+          install_name_tool -change @rpath/libz.1.dylib /usr/lib/libz.1.dylib tsuki || true
+          install_name_tool -change @rpath/libiconv.2.dylib /usr/lib/libiconv.2.dylib tsuki || true
+          install_name_tool -change @rpath/libbz2.1.0.dylib /usr/lib/libbz2.1.0.dylib tsuki || true
+
+          echo "✅ Fixed dependencies:"
+          otool -L tsuki
+
+          echo "🧪 Testing executable..."
+          ./tsuki --version || echo "⚠️  Warning: Executable test failed"
+        else
+          echo "❌ No tsuki binary found"
+          ls -la
+        fi
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: tsuki-${{ matrix.platform }}-${{ matrix.arch }}-build
+        path: |
+          build/tsuki${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+          build/Release/tsuki.exe
+        retention-days: 7
+        if-no-files-found: warn
+
+  # Generate IntelliSense package
+  intellisense-package:
+    name: Generate IntelliSense Package
+    runs-on: ubuntu-latest
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -18,42 +216,300 @@ jobs:
       with:
         python-version: '3.x'
 
-    - name: Extract tag name
-      id: extract_tag
-      run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-    - name: Prepare release assets
+    - name: Set version
+      shell: bash
       run: |
-        python3 scripts/prepare_release.py --version "${{ steps.extract_tag.outputs.TAG_NAME }}" --clean
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+        else
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+        fi
 
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Generate IntelliSense package
+      run: |
+        python3 scripts/prepare_release.py --version "${{ env.VERSION }}" --clean
+
+    - name: Upload IntelliSense artifacts
+      uses: actions/upload-artifact@v4
       with:
-        tag_name: ${{ steps.extract_tag.outputs.TAG_NAME }}
-        release_name: Tsuki Engine ${{ steps.extract_tag.outputs.TAG_NAME }}
-        body_path: releases/RELEASE_INFO.md
+        name: tsuki-intellisense-${{ env.VERSION }}
+        path: |
+          releases/tsuki-intellisense-${{ env.VERSION }}.tar.gz
+          releases/tsuki-intellisense-${{ env.VERSION }}.zip
+        retention-days: 7
+
+  # Bundle and release the artifacts
+  bundle-linux:
+    name: Bundle Linux Release
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+    - name: Set version
+      shell: bash
+      run: |
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+        else
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+        fi
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: tsuki-linux-x64-build
+        path: ./build/
+
+    - name: Create bundle directory
+      run: mkdir -p release-bundle
+
+    - name: Bundle Linux executable
+      shell: bash
+      run: |
+        # Copy main tsuki binary only
+        find build/ -name "tsuki" -type f -exec cp {} release-bundle/ \; || echo "No tsuki binary found"
+
+        # Set execute permissions
+        if [ -f release-bundle/tsuki ]; then
+          chmod +x release-bundle/tsuki
+          echo "✅ Successfully bundled Linux executable"
+          ls -la release-bundle/
+        else
+          echo "ERROR: No tsuki executable found in build artifacts"
+          ls -la build/
+          exit 1
+        fi
+
+    - name: Create release archive
+      shell: bash
+      run: |
+        cd release-bundle
+        zip -r "../tsuki-${{ env.VERSION }}-linux-x64.zip" .
+
+    - name: Upload release artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: tsuki-${{ env.VERSION }}-linux-x64
+        path: tsuki-${{ env.VERSION }}-linux-x64.zip
+
+  bundle-macos:
+    name: Bundle macOS Release
+    runs-on: macos-latest
+    needs: build
+    steps:
+    - name: Set version
+      shell: bash
+      run: |
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+        else
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+        fi
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: tsuki-macos-x64-build
+        path: ./build/
+
+    - name: Create bundle directory
+      run: mkdir -p release-bundle
+
+    - name: Bundle macOS executable
+      shell: bash
+      run: |
+        # Copy main tsuki binary only
+        find build/ -name "tsuki" -type f -exec cp {} release-bundle/ \; || echo "No tsuki binary found"
+
+        # Set execute permissions
+        if [ -f release-bundle/tsuki ]; then
+          chmod +x release-bundle/tsuki
+
+          echo "📋 Verifying bundled executable dependencies:"
+          otool -L release-bundle/tsuki
+
+          echo "🧪 Testing bundled executable:"
+          ./release-bundle/tsuki --version || echo "⚠️  Warning: Bundled executable test failed"
+
+          echo "✅ Successfully bundled macOS executable"
+          ls -la release-bundle/
+        else
+          echo "ERROR: No tsuki executable found in build artifacts"
+          ls -la build/
+          exit 1
+        fi
+
+
+
+    - name: Create release archive
+      shell: bash
+      run: |
+        cd release-bundle
+        zip -r "../tsuki-${{ env.VERSION }}-macos-x64.zip" .
+
+    - name: Upload release artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: tsuki-${{ env.VERSION }}-macos-x64
+        path: tsuki-${{ env.VERSION }}-macos-x64.zip
+
+  bundle-windows:
+    name: Bundle Windows Release
+    runs-on: windows-latest
+    needs: build
+    steps:
+    - name: Set version
+      shell: bash
+      run: |
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+        else
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+        fi
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: tsuki-windows-x64-build
+        path: ./build/
+
+    - name: Create bundle directory
+      run: mkdir -p release-bundle
+
+    - name: Bundle Windows executable
+      shell: bash
+      run: |
+        # Copy only main tsuki.exe
+        find build/ -name "tsuki.exe" -type f -exec cp {} release-bundle/ \; || echo "No tsuki.exe found"
+
+        # Create tsuki.bat wrapper so users can type "tsuki" instead of "tsuki.exe"
+        cat > release-bundle/tsuki.bat << 'EOF'
+        @echo off
+        "%~dp0tsuki.exe" %*
+        EOF
+
+        # Check if we got the main executable
+        if [ -f release-bundle/tsuki.exe ]; then
+          echo "✅ Successfully bundled Windows executable with tsuki.bat wrapper"
+          ls -la release-bundle/
+        else
+          echo "ERROR: No tsuki.exe found in build artifacts"
+          ls -la build/
+          exit 1
+        fi
+
+    - name: Checkout code for scripts
+      uses: actions/checkout@v4
+
+    - name: Install WiX Toolset
+      shell: powershell
+      run: |
+        # Download and install WiX 3.14 (stable version)
+        Invoke-WebRequest -Uri "https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip" -OutFile "wix.zip"
+        Expand-Archive -Path "wix.zip" -DestinationPath "wix"
+        # Add WiX to PATH for this job
+        echo "$env:GITHUB_WORKSPACE\wix" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+    - name: Create MSI installer
+      shell: powershell
+      run: |
+        # Run the PowerShell script to create MSI
+        & ".\scripts\create_msi.ps1" -Version "${{ env.VERSION }}" -BundleDir "release-bundle" -OutputFile "tsuki-${{ env.VERSION }}-windows-x64.msi"
+
+    - name: Create release archive
+      shell: bash
+      run: |
+        cd release-bundle
+        powershell -Command "Compress-Archive -Path * -DestinationPath '../tsuki-${{ env.VERSION }}-windows-x64.zip'"
+
+    - name: Upload release artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: tsuki-${{ env.VERSION }}-windows-x64
+        path: |
+          tsuki-${{ env.VERSION }}-windows-x64.zip
+          tsuki-${{ env.VERSION }}-windows-x64.msi
+
+  # Create GitHub release (runs after all platforms are bundled)
+  create-github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [bundle-linux, bundle-macos, bundle-windows, intellisense-package]
+    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'true')
+
+    steps:
+    - name: Set version
+      shell: bash
+      run: |
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+        else
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+        fi
+
+    - name: Download platform release artifacts
+      uses: actions/download-artifact@v4
+      with:
+        pattern: tsuki-${{ env.VERSION }}-*
+        path: ./release-assets/
+        merge-multiple: true
+
+    - name: Download IntelliSense artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: tsuki-intellisense-${{ env.VERSION }}
+        path: ./intellisense-assets/
+
+    - name: Move IntelliSense files to release assets
+      shell: bash
+      run: |
+        # Move the .tar.gz and .zip files to the main release assets directory
+        find intellisense-assets/ -name "*.tar.gz" -exec mv {} release-assets/ \;
+        find intellisense-assets/ -name "*.zip" -exec mv {} release-assets/ \;
+        echo "📦 Release assets ready:"
+        ls -la release-assets/
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ env.VERSION }}
+        name: ${{ contains(env.VERSION, 'test') && '[TEST BUILD] ' || '' }}Tsuki ${{ env.VERSION }}
+        body: |
+          ## Tsuki ${{ env.VERSION }}
+
+          ${{ contains(env.VERSION, 'test') && '⚠️ **Test Build** - This is a development build for testing cross-compilation. Use stable releases for production.' || 'Cross-platform game engine binaries for Linux, macOS, and Windows.' }}
+
+          ### 📦 Engine Downloads
+
+          Choose the appropriate binary for your platform:
+          - **Linux**: `tsuki-${{ env.VERSION }}-linux-x64.zip`
+          - **macOS**: `tsuki-${{ env.VERSION }}-macos-x64.zip`
+          - **Windows**: `tsuki-${{ env.VERSION }}-windows-x64.zip` or `tsuki-${{ env.VERSION }}-windows-x64.msi` (installer)
+
+          ### 💡 VSCode IntelliSense
+
+          For Lua autocomplete and type hints:
+          - **Package**: `tsuki-intellisense-${{ env.VERSION }}.tar.gz` or `.zip`
+          - **Setup**: Extract and run `python3 setup.py` in your game project
+
+          ### 🚀 Quick Start
+
+          1. Download and extract the engine archive for your platform
+          2. Run `./tsuki --help` (or `tsuki.exe --help` on Windows)
+          3. Check out the [documentation](https://github.com/adriankiezik/tsuki) for examples
+
+          ### 📋 What's Included
+
+          - **Linux**: `tsuki` binary (statically linked)
+          - **macOS**: `tsuki` CLI + `Tsuki.app` bundle
+          - **Windows**: `tsuki.exe` with required DLLs + MSI installer with system PATH integration
+          - **IntelliSense**: Lua type definitions for VSCode
+
+          Built with the optimized CI pipeline for reliable cross-platform compatibility.
+        files: |
+          ./release-assets/*.zip
+          ./release-assets/*.msi
         draft: false
-        prerelease: false
-
-    - name: Upload IntelliSense Package (tar.gz)
-      uses: actions/upload-release-asset@v1
+        prerelease: ${{ contains(env.VERSION, 'alpha') || contains(env.VERSION, 'beta') || contains(env.VERSION, 'rc') || contains(env.VERSION, 'test') || contains(env.VERSION, 'dev') }}
+        generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: releases/tsuki-intellisense-${{ steps.extract_tag.outputs.TAG_NAME }}.tar.gz
-        asset_name: tsuki-intellisense-${{ steps.extract_tag.outputs.TAG_NAME }}.tar.gz
-        asset_content_type: application/gzip
-
-    - name: Upload IntelliSense Package (zip)
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: releases/tsuki-intellisense-${{ steps.extract_tag.outputs.TAG_NAME }}.zip
-        asset_name: tsuki-intellisense-${{ steps.extract_tag.outputs.TAG_NAME }}.zip
-        asset_content_type: application/zip

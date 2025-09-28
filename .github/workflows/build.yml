@@ -1,38 +1,26 @@
 name: Build
 
 on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: 'Platforms to build (comma-separated)'
+        required: true
+        type: choice
+        default: 'linux,windows'
+        options:
+          - 'linux'
+          - 'windows'
+          - 'macos'
+          - 'linux,windows'
+          - 'linux,macos'
+          - 'windows,macos'
+          - 'linux,windows,macos'
 
 jobs:
-  # Skip builds if only documentation files changed
-  detect-code-changes:
-    runs-on: ubuntu-latest
-    outputs:
-      code: ${{ steps.filter.outputs.code }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            code:
-              - '**/*.cpp'
-              - '**/*.c'
-              - '**/*.h'
-              - '**/*.hpp'
-              - '**/CMakeLists.txt'
-              - '**/*.cmake'
-              - 'vendor/**'
-              - '.github/workflows/**'
-
   build:
-    name: Build ${{ matrix.os }}
+    name: Build ${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
-    needs: detect-code-changes
-    if: ${{ needs.detect-code-changes.outputs.code == 'true' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -41,25 +29,32 @@ jobs:
           - os: ubuntu-latest
             platform: linux
             arch: x64
-            cmake_preset: linux
             cc: gcc
             cxx: g++
-          # macOS builds are expensive - only run on releases
-          # - os: macos-latest
-          #   platform: macos
-          #   arch: x64
-          #   cmake_preset: macos
-          #   cc: clang
-          #   cxx: clang++
+          - os: macos-latest
+            platform: macos
+            arch: x64
+            cc: clang
+            cxx: clang++
           - os: windows-latest
             platform: windows
             arch: x64
-            cmake_preset: windows
             cc: cl
             cxx: cl
 
     steps:
+    - name: Check if platform should run
+      id: check_platform
+      shell: bash
+      run: |
+        if [[ "${{ github.event.inputs.platforms }}" == *"${{ matrix.platform }}"* ]]; then
+          echo "should_run=true" >> $GITHUB_OUTPUT
+        else
+          echo "should_run=false" >> $GITHUB_OUTPUT
+        fi
+
     - name: Checkout code
+      if: steps.check_platform.outputs.should_run == 'true'
       uses: actions/checkout@v4
       with:
         submodules: recursive
@@ -67,6 +62,7 @@ jobs:
 
     # Cache submodules to avoid re-downloading large repos like SDL3
     - name: Cache submodules
+      if: steps.check_platform.outputs.should_run == 'true'
       uses: actions/cache@v4
       with:
         path: |
@@ -78,7 +74,7 @@ jobs:
 
     # Cache apt packages for Ubuntu
     - name: Cache apt packages
-      if: matrix.os == 'ubuntu-latest'
+      if: steps.check_platform.outputs.should_run == 'true' && matrix.os == 'ubuntu-latest'
       uses: actions/cache@v4
       with:
         path: /var/cache/apt
@@ -88,7 +84,7 @@ jobs:
 
     # Install Ubuntu dependencies with caching
     - name: Install build dependencies (Ubuntu)
-      if: matrix.os == 'ubuntu-latest'
+      if: steps.check_platform.outputs.should_run == 'true' && matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update -qq
         sudo apt-get install -y --no-install-recommends \
@@ -99,7 +95,7 @@ jobs:
 
     # Install macOS dependencies with caching
     - name: Cache Homebrew
-      if: matrix.os == 'macos-latest'
+      if: steps.check_platform.outputs.should_run == 'true' && matrix.os == 'macos-latest'
       uses: actions/cache@v4
       with:
         path: |
@@ -110,14 +106,14 @@ jobs:
           brew-${{ runner.os }}-
 
     - name: Install build tools (macOS)
-      if: matrix.os == 'macos-latest'
+      if: steps.check_platform.outputs.should_run == 'true' && matrix.os == 'macos-latest'
       run: |
         # Use ninja for faster builds
         brew install ninja ccache
 
     # Setup ccache for faster incremental builds
     - name: Setup ccache
-      if: matrix.os != 'windows-latest'
+      if: steps.check_platform.outputs.should_run == 'true' && matrix.os != 'windows-latest'
       uses: actions/cache@v4
       with:
         path: ~/.ccache
@@ -126,7 +122,7 @@ jobs:
           ccache-${{ matrix.os }}-${{ matrix.cc }}-
 
     - name: Configure ccache
-      if: matrix.os != 'windows-latest'
+      if: steps.check_platform.outputs.should_run == 'true' && matrix.os != 'windows-latest'
       run: |
         ccache --set-config=cache_dir=~/.ccache
         ccache --set-config=max_size=500M
@@ -135,6 +131,7 @@ jobs:
 
     # Cache CMake build directory
     - name: Cache CMake build
+      if: steps.check_platform.outputs.should_run == 'true'
       uses: actions/cache@v4
       with:
         path: |
@@ -146,6 +143,7 @@ jobs:
           cmake-${{ matrix.os }}-
 
     - name: Configure CMake
+      if: steps.check_platform.outputs.should_run == 'true'
       shell: bash
       env:
         CC: ${{ matrix.cc }}
@@ -164,6 +162,7 @@ jobs:
         fi
 
     - name: Build
+      if: steps.check_platform.outputs.should_run == 'true'
       shell: bash
       run: |
         cd build
@@ -177,10 +176,11 @@ jobs:
         fi
 
     - name: Show ccache stats
-      if: matrix.os != 'windows-latest'
+      if: steps.check_platform.outputs.should_run == 'true' && matrix.os != 'windows-latest'
       run: ccache --show-stats
 
     - name: Test build
+      if: steps.check_platform.outputs.should_run == 'true'
       shell: bash
       run: |
         cd build
@@ -188,13 +188,12 @@ jobs:
         ls -la tsuki* || ls -la Release/tsuki* || echo "Build completed successfully"
 
     - name: Upload build artifacts
+      if: steps.check_platform.outputs.should_run == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: tsuki-${{ matrix.platform }}-${{ matrix.arch }}-build
         path: |
           build/tsuki${{ matrix.os == 'windows-latest' && '.exe' || '' }}
           build/Release/tsuki.exe
-          build/tsuki_example${{ matrix.os == 'windows-latest' && '.exe' || '' }}
-          build/Release/tsuki_example.exe
         retention-days: 7
         if-no-files-found: warn
