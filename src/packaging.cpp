@@ -1,4 +1,5 @@
 #include "tsuki/packaging.hpp"
+#include "tsuki/platform.hpp"
 #include "tsuki/version.hpp"
 #include <zip.h>
 #include <iostream>
@@ -92,12 +93,7 @@ bool Packaging::createStandaloneExecutable(const std::string& engine_path,
     output.close();
 
     // Make executable on Unix systems
-#ifndef _WIN32
-    std::filesystem::permissions(output_path,
-        std::filesystem::perms::owner_all |
-        std::filesystem::perms::group_read | std::filesystem::perms::group_exec |
-        std::filesystem::perms::others_read | std::filesystem::perms::others_exec);
-#endif
+    tsuki::Platform::makeExecutable(output_path);
 
     std::cout << "Standalone executable created successfully!" << std::endl;
     return true;
@@ -329,14 +325,7 @@ bool Packaging::createStandaloneExecutable(const std::string& engine_path,
                                           const std::string& target_arch) {
 
     // Use local engine for same-platform builds
-    std::string current_platform;
-#ifdef __APPLE__
-    current_platform = "macos";
-#elif defined(_WIN32)
-    current_platform = "windows";
-#else
-    current_platform = "linux";
-#endif
+    std::string current_platform = tsuki::Platform::getCurrentPlatform();
 
     if (target_platform == current_platform) {
         // Use local engine for same-platform builds
@@ -504,12 +493,7 @@ std::string Packaging::getEngineBinaryPath(const std::string& platform, const st
     }
 
     // Make executable on Unix systems
-#ifndef _WIN32
-    std::filesystem::permissions(engine_path,
-        std::filesystem::perms::owner_all |
-        std::filesystem::perms::group_read | std::filesystem::perms::group_exec |
-        std::filesystem::perms::others_read | std::filesystem::perms::others_exec);
-#endif
+    tsuki::Platform::makeExecutable(engine_path);
 
     std::cout << "Successfully prepared " << platform << " engine: " << engine_path << std::endl;
     return engine_path;

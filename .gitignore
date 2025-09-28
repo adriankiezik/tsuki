@@ -7,7 +7,6 @@ out/
 *.exe
 *.out
 *.app
-tsuki
 tsuki.exe
 
 # Object files

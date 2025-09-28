@@ -9,6 +9,7 @@
 #include "math.hpp"
 #include "mouse.hpp"
 #include "packaging.hpp"
+#include "platform.hpp"
 #include "system.hpp"
 #include "timer.hpp"
 #include "window.hpp"

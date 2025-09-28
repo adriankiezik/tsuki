@@ -1,11 +1,13 @@
 #include <tsuki/tsuki.hpp>
 #include <tsuki/packaging.hpp>
 #include <tsuki/version.hpp>
+#include <tsuki/platform.hpp>
 #include <iostream>
 #include <filesystem>
 #include <fstream>
 #include <cstring>
 #include <cstdio>
+#include <vector>
 #ifdef _WIN32
     #include <process.h>
     #define getpid _getpid
@@ -25,7 +27,8 @@ void printUsage(const char* program_name) {
     std::cout << "  Packaging:\n";
     std::cout << "    " << program_name << " --package <dir> <output.tsuki>          Create .tsuki file from directory\n";
     std::cout << "    " << program_name << " --fuse <game.tsuki> <output>            Create standalone executable\n";
-    std::cout << "    " << program_name << " --fuse <game.tsuki> <output> --target windows  Create Windows executable from Linux\n\n";
+    std::cout << "    " << program_name << " --fuse <game.tsuki> <output> --target windows  Create Windows executable from Linux\n";
+    std::cout << "    " << program_name << " --fuse-all <game.tsuki> <prefix>        Create executables for all platforms\n\n";
 
     std::cout << "  Other:\n";
     std::cout << "    " << program_name << " --help              Show this help\n";
@@ -38,6 +41,7 @@ void printUsage(const char* program_name) {
     std::cout << "  " << program_name << " --package mygame/ mygame             # Create mygame.tsuki (auto-append extension)\n";
     std::cout << "  " << program_name << " --fuse mygame.tsuki mygame_linux     # Create Linux standalone game\n";
     std::cout << "  " << program_name << " --fuse mygame.tsuki mygame.exe --target windows  # Create Windows .exe from Linux\n";
+    std::cout << "  " << program_name << " --fuse-all mygame.tsuki mygame       # Create mygame-linux, mygame-windows.exe, mygame-macos\n";
 }
 
 void printVersion() {
@@ -131,14 +135,7 @@ int main(int argc, char* argv[]) {
         std::string tsuki_file = argv[2];
         std::string output_exe = argv[3];
         // Default to current platform
-        std::string target_platform;
-#ifdef __APPLE__
-        target_platform = "macos";
-#elif defined(_WIN32)
-        target_platform = "windows";
-#else
-        target_platform = "linux";
-#endif
+        std::string target_platform = tsuki::Platform::getCurrentPlatform();
         std::string target_arch = "x64";        // default architecture
 
         // Parse additional arguments
@@ -169,49 +166,12 @@ int main(int argc, char* argv[]) {
         std::string engine_path = argv[0];
 
         // Check if argv[0] contains a path separator (cross-platform)
-        bool has_path = engine_path.find('/') != std::string::npos;
-#ifdef _WIN32
-        has_path = has_path || engine_path.find('\\') != std::string::npos;
-#endif
+        bool has_path = tsuki::Platform::hasPathSeparator(engine_path);
 
         if (!has_path) {
             // argv[0] is just the command name, need to find it in PATH
-            std::string which_result;
-
-#ifdef _WIN32
-            // Windows: use 'where' command
-            std::string command = "where " + engine_path;
-            if (engine_path.find(".exe") == std::string::npos) {
-                command = "where " + engine_path + ".exe";
-            }
-#else
-            // Unix/Linux/macOS: use 'which' command
-            std::string command = "which " + engine_path;
-#endif
-
-#ifdef _WIN32
-            FILE* pipe = _popen(command.c_str(), "r");
-#else
-            FILE* pipe = popen(command.c_str(), "r");
-#endif
-            if (pipe) {
-                char buffer[512];
-                if (fgets(buffer, sizeof(buffer), pipe)) {
-                    which_result = buffer;
-                    // Remove trailing newline/carriage return
-                    while (!which_result.empty() &&
-                           (which_result.back() == '\n' || which_result.back() == '\r')) {
-                        which_result.pop_back();
-                    }
-                }
-#ifdef _WIN32
-                _pclose(pipe);
-#else
-                pclose(pipe);
-#endif
-            }
-
-            if (!which_result.empty() && std::filesystem::exists(which_result)) {
+            std::string which_result = tsuki::Platform::findExecutableInPath(engine_path);
+            if (!which_result.empty()) {
                 engine_path = which_result;
             }
         }
@@ -221,6 +181,66 @@ int main(int argc, char* argv[]) {
             return 0;
         } else {
             std::cerr << "Failed to create standalone executable" << std::endl;
+            return 1;
+        }
+    }
+
+    // Handle fusion-all command (create executables for all platforms)
+    if (arg == "--fuse-all") {
+        if (argc != 4) {
+            std::cerr << "Usage: " << argv[0] << " --fuse-all <game.tsuki> <output_prefix>" << std::endl;
+            return 1;
+        }
+
+        std::string tsuki_file = argv[2];
+        std::string output_prefix = argv[3];
+
+        std::cout << "Creating standalone executables for all platforms..." << std::endl;
+
+        // Resolve the full path to the current executable
+        std::string engine_path = argv[0];
+
+        // Check if argv[0] contains a path separator (cross-platform)
+        bool has_path = tsuki::Platform::hasPathSeparator(engine_path);
+
+        if (!has_path) {
+            // argv[0] is just the command name, need to find it in PATH
+            std::string which_result = tsuki::Platform::findExecutableInPath(engine_path);
+            if (!which_result.empty()) {
+                engine_path = which_result;
+            }
+        }
+
+        // Define all platforms and their output names
+        std::vector<std::pair<std::string, std::string>> platforms = {
+            {"linux", output_prefix + "-linux"},
+            {"windows", output_prefix + "-windows.exe"},
+            {"macos", output_prefix + "-macos"}
+        };
+
+        bool all_successful = true;
+        int successful_count = 0;
+
+        for (const auto& [platform, output_name] : platforms) {
+            std::cout << "\n=== Creating " << platform << " executable ===" << std::endl;
+
+            if (tsuki::Packaging::createStandaloneExecutable(engine_path, tsuki_file, output_name, platform, "x64")) {
+                std::cout << "✓ Successfully created: " << output_name << std::endl;
+                successful_count++;
+            } else {
+                std::cerr << "✗ Failed to create " << platform << " executable" << std::endl;
+                all_successful = false;
+            }
+        }
+
+        std::cout << "\n=== Summary ===" << std::endl;
+        std::cout << "Successfully created " << successful_count << " out of " << platforms.size() << " executables." << std::endl;
+
+        if (all_successful) {
+            std::cout << "All platform executables created successfully!" << std::endl;
+            return 0;
+        } else {
+            std::cerr << "Some executables failed to create. See errors above." << std::endl;
             return 1;
         }
     }

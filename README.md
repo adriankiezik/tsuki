@@ -19,6 +19,9 @@ tsuki --fuse mygame.tsuki mygame_standalone
 
 # Cross-platform: Create Windows .exe from Linux
 tsuki --fuse mygame.tsuki mygame.exe --target windows
+
+# Create executables for all platforms at once
+tsuki --fuse-all mygame.tsuki mygame
 ```
 
 ## Game Structure
@@ -72,10 +75,14 @@ vcpkg install lua:x64-windows libzip:x64-windows
 ### Cross-Platform Fusion
 Create executables for any platform from any platform:
 ```bash
-# Linux developer creating Windows release
+# Create a single platform executable
 tsuki --fuse game.tsuki game.exe --target windows
 
-# Automatically downloads and caches Windows binaries
+# Create executables for ALL platforms at once
+tsuki --fuse-all game.tsuki mygame
+# Creates: mygame-linux, mygame-windows.exe, mygame-macos
+
+# Automatically downloads and caches required binaries
 ```
 
 ## CLI Reference
@@ -89,6 +96,7 @@ tsuki --fuse game.tsuki game.exe --target windows
 - `tsuki --package dir/ output` - Create .tsuki package
 - `tsuki --fuse game.tsuki output` - Create standalone executable
 - `tsuki --fuse game.tsuki output.exe --target windows` - Cross-platform fusion
+- `tsuki --fuse-all game.tsuki prefix` - Create executables for all platforms
 
 **Other:**
 - `tsuki --help` - Show help
