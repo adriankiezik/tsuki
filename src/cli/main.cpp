@@ -184,7 +184,11 @@ int main(int argc, char* argv[]) {
             std::string command = "which " + engine_path;
 #endif
 
+#ifdef _WIN32
+            FILE* pipe = _popen(command.c_str(), "r");
+#else
             FILE* pipe = popen(command.c_str(), "r");
+#endif
             if (pipe) {
                 char buffer[512];
                 if (fgets(buffer, sizeof(buffer), pipe)) {
@@ -195,7 +199,11 @@ int main(int argc, char* argv[]) {
                         which_result.pop_back();
                     }
                 }
+#ifdef _WIN32
+                _pclose(pipe);
+#else
                 pclose(pipe);
+#endif
             }
 
             if (!which_result.empty() && std::filesystem::exists(which_result)) {
