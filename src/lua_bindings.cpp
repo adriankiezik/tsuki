@@ -37,7 +37,6 @@ void LuaBindings::registerGraphics(lua_State* L) {
 
     // Add graphics functions
     setFunction(L, "clear", graphics_clear);
-    setFunction(L, "present", graphics_present);
     setFunction(L, "setColor", graphics_setColor);
     setFunction(L, "rectangle", graphics_rectangle);
     setFunction(L, "circle", graphics_circle);
@@ -112,12 +111,6 @@ int LuaBindings::graphics_clear(lua_State* L) {
     return 0;
 }
 
-int LuaBindings::graphics_present(lua_State* L) {
-    (void)L; // Suppress unused parameter warning
-    if (!engine_instance) return 0;
-    engine_instance->getGraphics().present();
-    return 0;
-}
 
 int LuaBindings::graphics_setColor(lua_State* L) {
     if (!engine_instance) return 0;

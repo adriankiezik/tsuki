@@ -21,7 +21,6 @@ private:
     // Graphics bindings
     static void registerGraphics(lua_State* L);
     static int graphics_clear(lua_State* L);
-    static int graphics_present(lua_State* L);
     static int graphics_setColor(lua_State* L);
     static int graphics_rectangle(lua_State* L);
     static int graphics_circle(lua_State* L);

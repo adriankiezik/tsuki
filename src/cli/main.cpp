@@ -76,8 +76,6 @@ function tsuki.draw()
     graphics.setColor(1.0, 1.0, 1.0, 1.0)
     graphics.print("Welcome to Tsuki!", window.getWidth()/2, window.getHeight()/2 - 20, "center")
     graphics.print("Edit main.lua to start building your game", window.getWidth()/2, window.getHeight()/2 + 20, "center")
-
-    graphics.present()
 end
 )";
 }

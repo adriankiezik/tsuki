@@ -124,17 +124,24 @@ class LuaDefinitionGenerator:
             func.add_param(param_name, param_type)
 
         # Parse return statements to determine return types
-        if 'lua_pushboolean' in func_body:
-            func.add_return('boolean')
-        elif 'lua_pushinteger' in func_body:
-            func.add_return('integer')
-        elif 'lua_pushnumber' in func_body:
-            func.add_return('number')
-        elif 'lua_pushstring' in func_body:
-            func.add_return('string')
-        elif 'return 2' in func_body:
+        if 'return 2' in func_body:
             # Special case for functions returning multiple values
-            func.returns = ['number', 'number']
+            if 'lua_pushinteger' in func_body:
+                func.returns = ['integer', 'integer']
+            else:
+                func.returns = ['number', 'number']
+        elif 'return 1' in func_body:
+            # Single return value
+            if 'lua_pushboolean' in func_body:
+                func.add_return('boolean')
+            elif 'lua_pushinteger' in func_body:
+                func.add_return('integer')
+            elif 'lua_pushnumber' in func_body:
+                func.add_return('number')
+            elif 'lua_pushstring' in func_body:
+                func.add_return('string')
+            elif 'lua_newtable' in func_body:
+                func.add_return('table')
         elif 'return 0' in func_body:
             pass  # void return
 
@@ -147,7 +154,17 @@ class LuaDefinitionGenerator:
         elif cpp_func_name == 'graphics_printAligned':
             func.params = [('text', 'any'), ('x', 'number'), ('y', 'number'), ('width', 'number'), ('height', 'number'), ('align', 'string?')]
         elif cpp_func_name == 'graphics_getTextSize':
-            func.returns = ['number', 'number']  # width, height
+            func.returns = ['integer', 'integer']  # width, height
+        elif cpp_func_name == 'mouse_getPosition':
+            func.returns = ['integer', 'integer']  # x, y
+        elif cpp_func_name == 'graphics_loadFont':
+            func.returns = ['boolean']  # success
+        elif cpp_func_name == 'graphics_setFont':
+            func.returns = ['boolean']  # success
+        elif cpp_func_name == 'debug_getInfo':
+            func.returns = ['table']  # debug info table
+        elif cpp_func_name == 'debug_stackTrace':
+            func.returns = ['string']  # stack trace string
 
     def _generate_param_name(self, cpp_func_name: str, index: int) -> str:
         """Generate meaningful parameter names based on function name and index."""
@@ -179,7 +196,6 @@ class LuaDefinitionGenerator:
         """Generate descriptions for functions."""
         descriptions = {
             'graphics_clear': 'Clear the screen with optional color',
-            'graphics_present': 'Present the rendered frame to the screen',
             'graphics_setColor': 'Set the current drawing color',
             'graphics_rectangle': 'Draw a rectangle',
             'graphics_circle': 'Draw a circle',

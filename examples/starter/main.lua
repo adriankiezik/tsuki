@@ -107,7 +107,4 @@ function tsuki.draw()
     -- Draw a small circle at mouse position
     tsuki.graphics.setColor(1.0, 0.0, 1.0, 0.7)
     tsuki.graphics.circle("fill", mouseX, mouseY, 5)
-
-    -- Present the rendered frame to the screen
-    tsuki.graphics.present()
 end
