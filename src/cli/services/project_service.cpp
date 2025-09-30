@@ -6,8 +6,6 @@
 namespace tsuki::cli {
 
 int ProjectService::createProject(const ProjectOptions& options) {
-    std::cout << "Creating new Tsuki project: " << options.name << std::endl;
-
     // Validate project name
     if (options.name.empty()) {
         std::cerr << "Error: Project name cannot be empty" << std::endl;
@@ -33,7 +31,6 @@ int ProjectService::createProject(const ProjectOptions& options) {
     // Create project directory
     try {
         std::filesystem::create_directory(options.name);
-        std::cout << "✓ Created project directory: " << options.name << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "Error: Cannot create directory '" << options.name << "': " << e.what() << std::endl;
         return 1;

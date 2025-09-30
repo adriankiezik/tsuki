@@ -24,10 +24,9 @@ public:
     bool executeFile(const std::string& filename);
     bool executeString(const std::string& code);
 
-    // Callback functions (like LOVE's love.load, love.update, love.draw)
-    bool callLoad();
+    // Callback functions
+    bool callStart();
     bool callUpdate(double dt);
-    bool callDraw();
     bool callFunction(const std::string& function_name);
 
     // Error handling

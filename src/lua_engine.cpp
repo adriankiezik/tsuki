@@ -16,7 +16,6 @@ bool LuaEngine::init() {
                           sol::lib::math, sol::lib::table, sol::lib::debug,
                           sol::lib::os, sol::lib::io);
 
-        spdlog::info("Lua engine initialized with sol3");
         return true;
     } catch (const sol::error& e) {
         setError(std::string("Failed to initialize Lua: ") + e.what());
@@ -68,21 +67,22 @@ bool LuaEngine::executeString(const std::string& code) {
     }
 }
 
-bool LuaEngine::callLoad() {
+bool LuaEngine::callStart() {
     try {
-        sol::optional<sol::function> load_func = lua["tsuki"]["load"];
-        if (load_func) {
-            auto result = load_func.value()();
+        sol::optional<sol::function> start_func = lua["tsuki"]["start"];
+
+        if (start_func) {
+            auto result = start_func.value()();
             if (!result.valid()) {
                 sol::error err = result;
-                setError(std::string("Error in tsuki.load: ") + err.what());
+                setError(std::string("Error in start: ") + err.what());
                 return false;
             }
             return true;
         }
-        return true; // No load function is not an error
+        return true; // No start function is not an error
     } catch (const sol::error& e) {
-        setError(std::string("Error calling tsuki.load: ") + e.what());
+        setError(std::string("Error calling start: ") + e.what());
         return false;
     }
 }
@@ -90,37 +90,19 @@ bool LuaEngine::callLoad() {
 bool LuaEngine::callUpdate(double dt) {
     try {
         sol::optional<sol::function> update_func = lua["tsuki"]["update"];
+
         if (update_func) {
             auto result = update_func.value()(dt);
             if (!result.valid()) {
                 sol::error err = result;
-                setError(std::string("Error in tsuki.update: ") + err.what());
+                setError(std::string("Error in update: ") + err.what());
                 return false;
             }
             return true;
         }
         return true; // No update function is not an error
     } catch (const sol::error& e) {
-        setError(std::string("Error calling tsuki.update: ") + e.what());
-        return false;
-    }
-}
-
-bool LuaEngine::callDraw() {
-    try {
-        sol::optional<sol::function> draw_func = lua["tsuki"]["draw"];
-        if (draw_func) {
-            auto result = draw_func.value()();
-            if (!result.valid()) {
-                sol::error err = result;
-                setError(std::string("Error in tsuki.draw: ") + err.what());
-                return false;
-            }
-            return true;
-        }
-        return true; // No draw function is not an error
-    } catch (const sol::error& e) {
-        setError(std::string("Error calling tsuki.draw: ") + e.what());
+        setError(std::string("Error calling update: ") + e.what());
         return false;
     }
 }

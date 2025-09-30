@@ -130,7 +130,6 @@ bool Audio::init() {
     }
 
     initialized_ = true;
-    spdlog::info("Audio engine initialized with miniaudio");
     return true;
 }
 

@@ -23,21 +23,45 @@ set(SDL_TEST OFF CACHE BOOL "")
 set(SDL_TESTS OFF CACHE BOOL "")
 add_subdirectory(vendor/sdl3)
 
-# Lua - build from source files
-file(GLOB LUA_SOURCES vendor/lua/*.c)
-list(REMOVE_ITEM LUA_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/lua/lua.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/lua/luac.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/lua/onelua.c)
-add_library(lua STATIC ${LUA_SOURCES})
-set_target_properties(lua PROPERTIES LINKER_LANGUAGE C)
-target_include_directories(lua PUBLIC vendor/lua)
+# LuaJIT - build using its native Makefile in source directory
+set(LUAJIT_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/luajit/src)
+set(LUAJIT_LIB ${LUAJIT_SRC_DIR}/libluajit.a)
+set(LUAJIT_INCLUDE ${LUAJIT_SRC_DIR})
+
+# Build LuaJIT using make
+add_custom_command(
+    OUTPUT ${LUAJIT_LIB}
+    COMMAND $(MAKE) BUILDMODE=static
+    WORKING_DIRECTORY ${LUAJIT_SRC_DIR}
+    COMMENT "Building LuaJIT"
+)
+
+# Create custom target that depends on the library
+add_custom_target(luajit_build ALL DEPENDS ${LUAJIT_LIB})
+
+# Create imported library target
+add_library(luajit STATIC IMPORTED GLOBAL)
+set_target_properties(luajit PROPERTIES
+    IMPORTED_LOCATION ${LUAJIT_LIB}
+    INTERFACE_INCLUDE_DIRECTORIES ${LUAJIT_INCLUDE}
+)
+add_dependencies(luajit luajit_build)
+
+# Link with libm and libdl on Unix
 if(UNIX)
-    target_link_libraries(lua m)
+    set_property(TARGET luajit APPEND PROPERTY
+        INTERFACE_LINK_LIBRARIES m ${CMAKE_DL_LIBS})
 endif()
 
-# zlib - build from source
+# Alias for compatibility
+add_library(lua ALIAS luajit)
+
+# zlib - build from source (static only to avoid DLL issues on Windows)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(ZLIB_BUILD_SHARED OFF CACHE BOOL "")
+set(ZLIB_BUILD_STATIC ON CACHE BOOL "")
 add_subdirectory(vendor/zlib)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
 # fmt - formatting library
 set(FMT_INSTALL OFF CACHE BOOL "")
@@ -60,7 +84,7 @@ set(BUILD_REGRESS OFF CACHE BOOL "")
 set(BUILD_EXAMPLES OFF CACHE BOOL "")
 set(BUILD_DOC OFF CACHE BOOL "")
 set(LIBZIP_DO_INSTALL OFF CACHE BOOL "")
-set(ZLIB_LIBRARY zlibstatic)
+set(ZLIB_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/vendor/zlib/libz.a)
 set(ZLIB_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/zlib)
 set(ZLIB_FOUND TRUE)
 add_subdirectory(vendor/libzip)
@@ -85,20 +109,15 @@ set(CURL_DISABLE_SMTP ON CACHE BOOL "")
 set(CURL_DISABLE_GOPHER ON CACHE BOOL "")
 set(CURL_CA_BUNDLE "auto" CACHE STRING "")
 set(CURL_CA_PATH "auto" CACHE STRING "")
-set(CURL_ENABLE_EXPORT OFF CACHE BOOL "")
+set(CURL_ENABLE_EXPORT_TARGET OFF CACHE BOOL "")
 add_subdirectory(vendor/curl)
 
 # spdlog - Fast logging library
 set(SPDLOG_FMT_EXTERNAL ON CACHE BOOL "")
 add_subdirectory(vendor/spdlog)
 
-# nlohmann/json - JSON library (header-only)
-set(JSON_BuildTests OFF CACHE BOOL "")
-set(JSON_Install OFF CACHE BOOL "")
-add_subdirectory(vendor/json)
-
 # sol3 - Lua binding library (header-only)
-set(SOL2_LUA_VERSION "5.4.0" CACHE STRING "")
+set(SOL2_LUA_VERSION "luajit" CACHE STRING "")
 add_subdirectory(vendor/sol3)
 
 # miniaudio - Audio library (header-only, just add include path)
@@ -127,7 +146,6 @@ target_link_libraries(libtsuki
     fmt::fmt
     CURL::libcurl
     spdlog::spdlog
-    nlohmann_json::nlohmann_json
     sol2
 )
 if(UNIX)

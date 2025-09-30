@@ -65,10 +65,7 @@ bool Engine::init() {
     // Try adaptive VSync first (allows higher FPS while preventing tearing)
     // Fall back to regular VSync if adaptive isn't supported
     if (!window_.setVSync(-1)) { // SDL_RENDERER_VSYNC_ADAPTIVE
-        std::cout << "Adaptive VSync not supported, falling back to regular VSync" << std::endl;
         window_.setVSync(true);
-    } else {
-        std::cout << "Adaptive VSync enabled for smooth uncapped FPS" << std::endl;
     }
 
     // Initialize subsystems
@@ -184,8 +181,8 @@ void Engine::runLuaGame(const std::string& game_path) {
         return;
     }
 
-    // Call tsuki.load() if it exists
-    lua_engine_.callLoad();
+    // Call start() if it exists
+    lua_engine_.callStart();
 
     timer_.update();
 
@@ -199,13 +196,10 @@ void Engine::runLuaGame(const std::string& game_path) {
             keyboard_.update();
             mouse_.update();
 
-            // Call tsuki.update(dt) if it exists
-            lua_engine_.callUpdate(dt);
-
             graphics_.clear();
 
-            // Call tsuki.draw() if it exists
-            lua_engine_.callDraw();
+            // Call update(dt) for game logic and rendering
+            lua_engine_.callUpdate(dt);
 
             graphics_.present();
         } catch (const std::exception& e) {

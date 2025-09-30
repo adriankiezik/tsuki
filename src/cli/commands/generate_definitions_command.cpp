@@ -7,14 +7,12 @@
 namespace tsuki::cli {
 
 int GenerateDefinitionsCommand::execute(int argc, char* argv[]) {
-    std::string output_path = "tsuki-definitions.lua";
+    std::string output_path = "definitions.lua";
 
     // Parse optional output path
     if (argc >= 3) {
         output_path = argv[2];
     }
-
-    std::cout << "Generating Lua type definitions..." << std::endl;
 
     DefinitionsGenerator generator;
     if (!generator.saveToFile(output_path)) {
@@ -26,7 +24,7 @@ int GenerateDefinitionsCommand::execute(int argc, char* argv[]) {
     std::cout << "✓ Definitions generated: " << abs_path << std::endl;
     std::cout << "\nTo use IntelliSense, add to your .luarc.json:" << std::endl;
     std::cout << "{\n";
-    std::cout << "    \"Lua.runtime.version\": \"Lua 5.4\",\n";
+    std::cout << "    \"Lua.runtime.version\": \"Lua 5.1\",\n";
     std::cout << "    \"Lua.diagnostics.globals\": [\"tsuki\"],\n";
     std::cout << "    \"Lua.workspace.checkThirdParty\": false,\n";
     std::cout << "    \"Lua.workspace.library\": [\"" << std::filesystem::path(output_path).filename().string() << "\"]\n";

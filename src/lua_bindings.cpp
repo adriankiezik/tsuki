@@ -5,10 +5,6 @@
 namespace tsuki {
 
 void LuaBindings::registerAll(sol::state& lua, Engine* engine) {
-    if (!engine) {
-        spdlog::error("Cannot register Lua bindings: engine is null");
-        return;
-    }
 
     // Bind enums
     lua.new_enum<DrawMode>("DrawMode",
@@ -112,16 +108,42 @@ void LuaBindings::registerAll(sol::state& lua, Engine* engine) {
         "setSize", &Window::setSize
     );
 
-    // Create tsuki table with pointers to actual engine subsystems
-    // Sol3 will handle the method calls automatically with . syntax
+    // Create tsuki table
     auto tsuki = lua.create_table();
-    tsuki["graphics"] = &engine->getGraphics();
-    tsuki["keyboard"] = &engine->getKeyboard();
-    tsuki["mouse"] = &engine->getMouse();
-    tsuki["window"] = &engine->getWindow();
+
+    // Only set up actual engine instances if engine is provided
+    if (engine) {
+        // Set up in tsuki table
+        tsuki["graphics"] = &engine->getGraphics();
+        tsuki["keyboard"] = &engine->getKeyboard();
+        tsuki["mouse"] = &engine->getMouse();
+        tsuki["window"] = &engine->getWindow();
+
+        // Also set as globals for convenience
+        lua["graphics"] = &engine->getGraphics();
+        lua["keyboard"] = &engine->getKeyboard();
+        lua["mouse"] = &engine->getMouse();
+        lua["window"] = &engine->getWindow();
+    } else {
+        // For introspection, store references to the global type tables that sol3 creates
+        // Sol3's new_usertype creates a global table with the type name containing all methods
+        lua_State* L = lua.lua_state();
+
+        lua_getglobal(L, "Graphics");
+        tsuki["graphics"] = sol::stack::pop<sol::object>(L);
+
+        lua_getglobal(L, "Keyboard");
+        tsuki["keyboard"] = sol::stack::pop<sol::object>(L);
+
+        lua_getglobal(L, "Mouse");
+        tsuki["mouse"] = sol::stack::pop<sol::object>(L);
+
+        lua_getglobal(L, "Window");
+        tsuki["window"] = sol::stack::pop<sol::object>(L);
+    }
 
     // Helper functions
-    tsuki["print"] = [](const sol::object& obj) {
+    tsuki["print"] = [engine](const sol::object& obj) {
         std::string text;
         if (obj.is<std::string>()) {
             text = obj.as<std::string>();
@@ -132,7 +154,9 @@ void LuaBindings::registerAll(sol::state& lua, Engine* engine) {
         } else if (obj.is<bool>()) {
             text = obj.as<bool>() ? "true" : "false";
         }
-        spdlog::info("[Lua] {}", text);
+        if (engine) {
+            spdlog::info("[Lua] {}", text);
+        }
     };
 
     // Debug utilities
@@ -151,8 +175,11 @@ void LuaBindings::registerAll(sol::state& lua, Engine* engine) {
 
     // Set global tsuki table
     lua["tsuki"] = tsuki;
+}
 
-    spdlog::info("Lua bindings registered with sol3 (automatic usertype binding)");
+void LuaBindings::registerForIntrospection(sol::state& lua) {
+    // Just call registerAll with nullptr to avoid code duplication
+    registerAll(lua, nullptr);
 }
 
 // Empty implementations (kept for compatibility)

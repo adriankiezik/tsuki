@@ -89,7 +89,6 @@ char Platform::getPathSeparator() {
 
 std::string Platform::normalizePath(const std::string& path) {
     std::string result = path;
-    char preferred = getPathSeparator();
 
 #ifdef _WIN32
     // On Windows, convert forward slashes to backslashes

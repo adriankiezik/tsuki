@@ -12,8 +12,6 @@ bool IntelliSenseService::setup(const std::string& project_dir, bool skip) {
         return true;
     }
 
-    std::cout << "Generating IntelliSense definitions..." << std::endl;
-
     if (!generateDefinitions(project_dir)) {
         std::cout << "Warning: Failed to generate IntelliSense definitions" << std::endl;
         std::cout << "You can manually run: tsuki generate-definitions" << std::endl;
@@ -26,7 +24,7 @@ bool IntelliSenseService::setup(const std::string& project_dir, bool skip) {
 bool IntelliSenseService::generateDefinitions(const std::string& project_dir) {
     try {
         DefinitionsGenerator generator;
-        std::string output_path = project_dir + "/tsuki-definitions.lua";
+        std::string output_path = project_dir + "/definitions.lua";
         return generator.saveToFile(output_path);
     } catch (const std::exception& e) {
         spdlog::error("Failed to generate definitions: {}", e.what());
@@ -36,10 +34,10 @@ bool IntelliSenseService::generateDefinitions(const std::string& project_dir) {
 
 bool IntelliSenseService::createLuarcConfig(const std::string& project_dir) {
     std::string config_content = R"({
-    "Lua.runtime.version": "Lua 5.4",
-    "Lua.diagnostics.globals": ["tsuki"],
+    "Lua.runtime.version": "Lua 5.1",
+    "Lua.diagnostics.globals": ["tsuki", "graphics", "window", "keyboard", "mouse", "debug"],
     "Lua.workspace.checkThirdParty": false,
-    "Lua.workspace.library": ["tsuki-definitions.lua"]
+    "Lua.workspace.library": ["definitions.lua"]
 })";
 
     std::string config_path = project_dir + "/.luarc.json";

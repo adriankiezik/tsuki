@@ -10,6 +10,7 @@ class Engine;
 class LuaBindings {
 public:
     static void registerAll(sol::state& lua, Engine* engine);
+    static void registerForIntrospection(sol::state& lua);
 
 private:
     static void registerGraphics(sol::state& lua, Engine* engine);

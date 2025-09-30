@@ -1,6 +1,6 @@
 # Tsuki
 
-A modern 2D game engine built with SDL3, featuring seamless cross-platform distribution and Lua scripting.
+A modern 2D game engine built with SDL3, featuring seamless cross-platform distribution and LuaJIT scripting.
 
 ## Quick Start
 
@@ -53,26 +53,31 @@ end
 ### Ubuntu/Debian
 ```bash
 sudo apt-get update
-sudo apt-get install -y build-essential cmake pkg-config liblua5.4-dev libzip-dev curl \
+sudo apt-get install -y build-essential cmake pkg-config libzip-dev curl \
   libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev \
   libxss-dev libgl1-mesa-dev libasound2-dev libpulse-dev libudev-dev libdbus-1-dev \
   libwayland-dev libxkbcommon-dev wayland-protocols
-# SDL3 will be built automatically
+# SDL3 and LuaJIT will be built automatically
 ./build.sh
 ```
 
 ### macOS
 ```bash
-brew install cmake pkg-config lua@5.4 libzip curl
+brew install cmake pkg-config libzip curl
 ./build.sh
 ```
 
 ### Windows
-Use the pre-built releases or build with vcpkg:
+Use the pre-built releases or build from source (all dependencies are built automatically):
 ```bash
-vcpkg install lua:x64-windows libzip:x64-windows
-./build.sh
+# Using Visual Studio 2022 or later
+mkdir build
+cd build
+cmake ..
+cmake --build . --config Release
 ```
+
+**Note:** No external dependencies needed - SDL3, LuaJIT, zlib, libzip, and curl are all built from source as static libraries.
 
 ## Distribution
 
