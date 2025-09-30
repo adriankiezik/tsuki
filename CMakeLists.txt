@@ -65,8 +65,48 @@ set(ZLIB_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/zlib)
 set(ZLIB_FOUND TRUE)
 add_subdirectory(vendor/libzip)
 
-# Main library
+# libcurl - HTTP client library (minimal build)
+set(BUILD_CURL_EXE OFF CACHE BOOL "")
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "")
+set(CURL_STATICLIB ON CACHE BOOL "")
+set(HTTP_ONLY ON CACHE BOOL "")
+set(BUILD_TESTING OFF CACHE BOOL "")
+set(CURL_USE_LIBSSH2 OFF CACHE BOOL "")
+set(CURL_DISABLE_LDAP ON CACHE BOOL "")
+set(CURL_DISABLE_LDAPS ON CACHE BOOL "")
+set(CURL_DISABLE_TELNET ON CACHE BOOL "")
+set(CURL_DISABLE_DICT ON CACHE BOOL "")
+set(CURL_DISABLE_FILE ON CACHE BOOL "")
+set(CURL_DISABLE_TFTP ON CACHE BOOL "")
+set(CURL_DISABLE_RTSP ON CACHE BOOL "")
+set(CURL_DISABLE_POP3 ON CACHE BOOL "")
+set(CURL_DISABLE_IMAP ON CACHE BOOL "")
+set(CURL_DISABLE_SMTP ON CACHE BOOL "")
+set(CURL_DISABLE_GOPHER ON CACHE BOOL "")
+set(CURL_CA_BUNDLE "auto" CACHE STRING "")
+set(CURL_CA_PATH "auto" CACHE STRING "")
+set(CURL_ENABLE_EXPORT OFF CACHE BOOL "")
+add_subdirectory(vendor/curl)
+
+# spdlog - Fast logging library
+set(SPDLOG_FMT_EXTERNAL ON CACHE BOOL "")
+add_subdirectory(vendor/spdlog)
+
+# nlohmann/json - JSON library (header-only)
+set(JSON_BuildTests OFF CACHE BOOL "")
+set(JSON_Install OFF CACHE BOOL "")
+add_subdirectory(vendor/json)
+
+# sol3 - Lua binding library (header-only)
+set(SOL2_LUA_VERSION "5.4.0" CACHE STRING "")
+add_subdirectory(vendor/sol3)
+
+# miniaudio - Audio library (header-only, just add include path)
+
+# Main library (exclude CLI main file from library)
 file(GLOB_RECURSE TSUKI_SOURCES src/*.cpp src/*.hpp)
+list(REMOVE_ITEM TSUKI_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/cli/main.cpp)
 add_library(libtsuki STATIC ${TSUKI_SOURCES})
 target_include_directories(libtsuki
     PUBLIC
@@ -77,8 +117,19 @@ target_include_directories(libtsuki
         vendor/libzip/lib
         vendor/zlib
         vendor/stb
+        vendor/miniaudio
 )
-target_link_libraries(libtsuki SDL3::SDL3-static lua zip zlibstatic fmt::fmt)
+target_link_libraries(libtsuki
+    SDL3::SDL3-static
+    lua
+    zip
+    zlibstatic
+    fmt::fmt
+    CURL::libcurl
+    spdlog::spdlog
+    nlohmann_json::nlohmann_json
+    sol2
+)
 if(UNIX)
     target_link_libraries(libtsuki m)
 endif()

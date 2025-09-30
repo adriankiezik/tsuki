@@ -4,12 +4,12 @@
 #include <memory>
 #include <unordered_map>
 #include <algorithm>
-
-#ifdef TSUKI_HAS_SDL_MIXER
-#include <SDL3_mixer/SDL_mixer.h>
-#endif
+#include "miniaudio.h"
 
 namespace tsuki {
+
+// Forward declarations
+class AudioEngine;
 
 class Sound {
 public:
@@ -24,25 +24,15 @@ public:
 
     bool load(const std::string& filename);
     void unload();
+    bool isValid() const { return is_loaded_; }
 
-    bool isValid() const {
-#ifdef TSUKI_HAS_SDL_MIXER
-        return chunk_ != nullptr;
-#else
-        return false;
-#endif
-    }
-
-#ifdef TSUKI_HAS_SDL_MIXER
-    Mix_Chunk* getChunk() const { return chunk_; }
-#endif
+    ma_decoder* getDecoder() { return decoder_.get(); }
+    const std::string& getFilename() const { return filename_; }
 
 private:
-#ifdef TSUKI_HAS_SDL_MIXER
-    Mix_Chunk* chunk_ = nullptr;
-#else
-    void* chunk_ = nullptr; // Placeholder when SDL_mixer is not available
-#endif
+    std::unique_ptr<ma_decoder> decoder_;
+    std::string filename_;
+    bool is_loaded_ = false;
 };
 
 class Music {
@@ -58,31 +48,21 @@ public:
 
     bool load(const std::string& filename);
     void unload();
+    bool isValid() const { return is_loaded_; }
 
-    bool isValid() const {
-#ifdef TSUKI_HAS_SDL_MIXER
-        return music_ != nullptr;
-#else
-        return false;
-#endif
-    }
-
-#ifdef TSUKI_HAS_SDL_MIXER
-    Mix_Music* getMusic() const { return music_; }
-#endif
+    ma_decoder* getDecoder() { return decoder_.get(); }
+    const std::string& getFilename() const { return filename_; }
 
 private:
-#ifdef TSUKI_HAS_SDL_MIXER
-    Mix_Music* music_ = nullptr;
-#else
-    void* music_ = nullptr; // Placeholder when SDL_mixer is not available
-#endif
+    std::unique_ptr<ma_decoder> decoder_;
+    std::string filename_;
+    bool is_loaded_ = false;
 };
 
 class Audio {
 public:
-    Audio() = default;
-    ~Audio() = default;
+    Audio();
+    ~Audio();
 
     bool init();
     void shutdown();
@@ -112,8 +92,16 @@ public:
     bool isMusicPaused() const;
 
 private:
+    std::unique_ptr<ma_engine> engine_;
+    ma_sound current_sound_;
+    ma_sound current_music_;
+
     float volume_ = 1.0f;
     float music_volume_ = 1.0f;
+    bool initialized_ = false;
+    bool sound_loaded_ = false;
+    bool music_loaded_ = false;
+    bool music_paused_ = false;
 };
 
 } // namespace tsuki

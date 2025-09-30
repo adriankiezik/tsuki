@@ -2,12 +2,7 @@
 
 #include <string>
 #include <memory>
-
-extern "C" {
-#include <lua.h>
-#include <lualib.h>
-#include <lauxlib.h>
-}
+#include <sol/sol.hpp>
 
 namespace tsuki {
 
@@ -39,16 +34,13 @@ public:
     std::string getLastError() const { return last_error_; }
 
     // Direct Lua state access for bindings
-    lua_State* getLuaState() const { return L; }
+    sol::state& getLuaState() { return lua; }
 
 private:
-    lua_State* L;
+    sol::state lua;
     std::string last_error_;
 
     void setError(const std::string& error);
-    void setError(const std::string& error, const std::string& function_name, const std::string& file_context);
-    bool callLuaFunction(const std::string& function_name, int args = 0, int results = 0);
-    bool callLuaFunction(const std::string& function_name, const std::string& display_name, int args = 0, int results = 0);
 };
 
 } // namespace tsuki

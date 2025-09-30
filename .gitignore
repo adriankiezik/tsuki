@@ -58,5 +58,9 @@ lib/
 dist/
 releases/
 
+# Example IntelliSense files (generated locally, not committed)
+examples/*/.luarc.json
+examples/*/tsuki-definitions.lua
+
 # AI tools
 .claude

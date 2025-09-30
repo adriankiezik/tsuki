@@ -203,41 +203,6 @@ jobs:
         retention-days: 7
         if-no-files-found: warn
 
-  # Generate IntelliSense package
-  intellisense-package:
-    name: Generate IntelliSense Package
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.x'
-
-    - name: Set version
-      shell: bash
-      run: |
-        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-          echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
-        else
-          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-        fi
-
-    - name: Generate IntelliSense package
-      run: |
-        python3 scripts/prepare_release.py --version "${{ env.VERSION }}" --clean
-
-    - name: Upload IntelliSense artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: tsuki-intellisense-${{ env.VERSION }}
-        path: |
-          releases/tsuki-intellisense-${{ env.VERSION }}.tar.gz
-          releases/tsuki-intellisense-${{ env.VERSION }}.zip
-        retention-days: 7
-
   # Bundle and release the artifacts
   bundle-linux:
     name: Bundle Linux Release
@@ -445,7 +410,7 @@ jobs:
   create-github-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [bundle-linux, bundle-macos, bundle-windows, intellisense-package]
+    needs: [bundle-linux, bundle-macos, bundle-windows]
     if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'true')
 
     steps:
@@ -465,18 +430,9 @@ jobs:
         path: ./release-assets/
         merge-multiple: true
 
-    - name: Download IntelliSense artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: tsuki-intellisense-${{ env.VERSION }}
-        path: ./intellisense-assets/
-
-    - name: Move IntelliSense files to release assets
+    - name: List release assets
       shell: bash
       run: |
-        # Move the .tar.gz and .zip files to the main release assets directory
-        find intellisense-assets/ -name "*.tar.gz" -exec mv {} release-assets/ \;
-        find intellisense-assets/ -name "*.zip" -exec mv {} release-assets/ \;
         echo "📦 Release assets ready:"
         ls -la release-assets/
 
@@ -490,31 +446,38 @@ jobs:
 
           ${{ contains(env.VERSION, 'test') && '⚠️ **Test Build** - This is a development build for testing cross-compilation. Use stable releases for production.' || 'Cross-platform game engine binaries for Linux, macOS, and Windows.' }}
 
-          ### 📦 Engine Downloads
+          ### 📦 Downloads
 
           Choose the appropriate binary for your platform:
           - **Linux**: `tsuki-${{ env.VERSION }}-linux-x64.zip`
           - **macOS**: `tsuki-${{ env.VERSION }}-macos-x64.zip`
           - **Windows**: `tsuki-${{ env.VERSION }}-windows-x64.zip` or `tsuki-${{ env.VERSION }}-windows-x64.msi` (installer)
 
-          ### 💡 VSCode IntelliSense
-
-          For Lua autocomplete and type hints:
-          - **Package**: `tsuki-intellisense-${{ env.VERSION }}.tar.gz` or `.zip`
-          - **Setup**: Extract and run `python3 setup.py` in your game project
-
           ### 🚀 Quick Start
 
           1. Download and extract the engine archive for your platform
-          2. Run `./tsuki --help` (or `tsuki.exe --help` on Windows)
-          3. Check out the [documentation](https://github.com/adriankiezik/tsuki) for examples
+          2. Run `./tsuki new my-game` to create a new project (IntelliSense definitions auto-generated)
+          3. Run `./tsuki --help` for all available commands
+          4. Check out the [documentation](https://github.com/adriankiezik/tsuki) for examples
+
+          ### 💡 VSCode IntelliSense
+
+          Lua type definitions are automatically generated when you create a new project:
+          ```bash
+          tsuki new my-game  # Creates project with IntelliSense enabled
+          ```
+
+          Or generate manually in an existing project:
+          ```bash
+          tsuki generate-definitions
+          ```
 
           ### 📋 What's Included
 
           - **Linux**: `tsuki` binary (statically linked)
-          - **macOS**: `tsuki` CLI + `Tsuki.app` bundle
-          - **Windows**: `tsuki.exe` with required DLLs + MSI installer with system PATH integration
-          - **IntelliSense**: Lua type definitions for VSCode
+          - **macOS**: `tsuki` CLI
+          - **Windows**: `tsuki.exe` + MSI installer with system PATH integration
+          - **Built-in IntelliSense**: Automatic Lua type definitions generation
 
           Built with the optimized CI pipeline for reliable cross-platform compatibility.
         files: |

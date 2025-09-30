@@ -8,11 +8,15 @@ A modern 2D game engine built with SDL3, featuring seamless cross-platform distr
 # Build the engine
 ./build.sh
 
-# Run a game directory
-tsuki mygame/
+# Create a new project (with IntelliSense auto-generated)
+tsuki new mygame
+
+# Run your game
+cd mygame
+tsuki .
 
 # Package a game
-tsuki --package mygame/ mygame.tsuki
+tsuki --package . mygame.tsuki
 
 # Create standalone executable
 tsuki --fuse mygame.tsuki mygame_standalone
@@ -44,7 +48,7 @@ function tsuki.draw()
 end
 ```
 
-## Installation
+## Manual Installation
 
 ### Ubuntu/Debian
 ```bash
@@ -87,10 +91,14 @@ tsuki --fuse-all game.tsuki mygame
 
 ## CLI Reference
 
+**Project Management:**
+- `tsuki new <project>` - Create new project with IntelliSense
+- `tsuki generate-definitions` - Generate Lua type definitions
+
 **Running Games:**
 - `tsuki game_directory/` - Run from directory
 - `tsuki game.tsuki` - Run packaged game
-- `tsuki game` - Auto-detect game.tsuki
+- `tsuki .` - Run current directory
 
 **Packaging:**
 - `tsuki --package dir/ output` - Create .tsuki package
@@ -104,11 +112,22 @@ tsuki --fuse-all game.tsuki mygame
 
 ## VSCode IntelliSense
 
-For autocomplete and type hints in VSCode:
+Lua type definitions are automatically generated when you create a project:
 
-1. Install "Lua" extension by sumneko
-2. Run `make dist` to generate definitions
-3. IntelliSense is pre-configured in `examples/` directories
+```bash
+tsuki new mygame  # Creates project with IntelliSense enabled
+```
+
+For existing projects or examples:
+
+```bash
+cd mygame
+tsuki generate-definitions  # Generates tsuki-definitions.lua and .luarc.json
+```
+
+Requirements:
+1. Install the "Lua" extension by sumneko in VSCode
+2. Restart VSCode after generating definitions
 
 ## Documentation
 

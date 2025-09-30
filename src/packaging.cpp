@@ -7,8 +7,47 @@
 #include <filesystem>
 #include <cstring>
 #include <algorithm>
+#include <sstream>
 
 namespace tsuki {
+
+// Helper function to sanitize and validate URLs
+static bool isValidUrl(const std::string& url) {
+    // Basic URL validation - check for http/https protocol
+    if (url.find("http://") != 0 && url.find("https://") != 0) {
+        return false;
+    }
+    // Check for shell metacharacters that could be dangerous
+    const std::string dangerous_chars = "|&;`$(){}[]<>\\'\"`\n";
+    return url.find_first_of(dangerous_chars) == std::string::npos;
+}
+
+// Helper function to safely execute curl command
+// NOTE: This is a temporary solution. For production, use libcurl directly.
+static int safeCurlCommand(const std::string& url, const std::string& output_path, bool headers_only = false) {
+    if (!isValidUrl(url)) {
+        std::cerr << "Error: Invalid or potentially dangerous URL" << std::endl;
+        return -1;
+    }
+
+    // Build command with properly quoted arguments
+    std::ostringstream cmd;
+    cmd << "curl -L ";
+    if (headers_only) {
+        cmd << "-s -I ";
+    } else {
+        cmd << "-o ";
+    }
+
+    // Quote paths to handle spaces safely
+    cmd << "\"" << output_path << "\" \"" << url << "\"";
+
+    if (headers_only) {
+        cmd << " 2>/dev/null";
+    }
+
+    return system(cmd.str().c_str());
+}
 
 bool Packaging::createTsukiFile(const std::string& source_dir, const std::string& output_file) {
     std::cout << "Creating .tsuki file: " << output_file << " from " << source_dir << std::endl;
@@ -58,6 +97,17 @@ bool Packaging::createStandaloneExecutable(const std::string& engine_path,
         return false;
     }
 
+    // Get game size first
+    game.seekg(0, std::ios::end);
+    uint64_t game_size = game.tellg();
+    game.seekg(0, std::ios::beg);
+
+    // Validate game size
+    if (game_size == 0 || game_size > (1ULL << 32)) { // Limit to 4GB for sanity
+        std::cerr << "Error: Invalid game file size: " << game_size << std::endl;
+        return false;
+    }
+
     // Create output file
     std::ofstream output(output_path, std::ios::binary);
     if (!output) {
@@ -65,18 +115,19 @@ bool Packaging::createStandaloneExecutable(const std::string& engine_path,
         return false;
     }
 
-    // Read engine into memory
-    std::string engine_content((std::istreambuf_iterator<char>(engine)), std::istreambuf_iterator<char>());
-    
-    // Read game into memory
-    game.seekg(0, std::ios::end);
-    uint64_t game_size = game.tellg();
-    game.seekg(0, std::ios::beg);
-    std::string game_content((std::istreambuf_iterator<char>(game)), std::istreambuf_iterator<char>());
+    // Stream engine content in chunks to avoid loading entire file into memory
+    constexpr size_t BUFFER_SIZE = 8192;
+    char buffer[BUFFER_SIZE];
 
+    while (engine.good()) {
+        engine.read(buffer, BUFFER_SIZE);
+        output.write(buffer, engine.gcount());
+    }
 
-    // Write engine
-    output.write(engine_content.data(), engine_content.size());
+    if (engine.bad()) {
+        std::cerr << "Error reading engine file" << std::endl;
+        return false;
+    }
 
     // Add separator
     const char separator[] = "---TSUKI-GAME-BOUNDARY---";
@@ -85,8 +136,16 @@ bool Packaging::createStandaloneExecutable(const std::string& engine_path,
     // Write game size as binary (little-endian)
     output.write(reinterpret_cast<const char*>(&game_size), sizeof(game_size));
 
-    // Write game content
-    output.write(game_content.data(), game_content.size());
+    // Stream game content in chunks
+    while (game.good()) {
+        game.read(buffer, BUFFER_SIZE);
+        output.write(buffer, game.gcount());
+    }
+
+    if (game.bad()) {
+        std::cerr << "Error reading game file" << std::endl;
+        return false;
+    }
 
     engine.close();
     game.close();
@@ -403,9 +462,8 @@ bool Packaging::downloadBinary(const std::string& url, const std::string& output
     // Create directory if it doesn't exist
     std::filesystem::create_directories(std::filesystem::path(output_path).parent_path());
 
-    // Use curl to download the file
-    std::string curl_cmd = "curl -L -o \"" + output_path + "\" \"" + url + "\"";
-    int result = system(curl_cmd.c_str());
+    // Use safe curl wrapper to download the file
+    int result = safeCurlCommand(url, output_path, false);
 
     if (result != 0) {
         std::cerr << "Failed to download binary. curl returned: " << result << std::endl;
@@ -525,12 +583,11 @@ bool Packaging::checkRemoteVersionNewer(const std::string& url, const std::strin
     
     // Get local file modification time
     (void)std::filesystem::last_write_time(cached_path);
-    
-    // Use curl to get remote file headers (Last-Modified or ETag)
+
+    // Use safe curl wrapper to get remote file headers (Last-Modified or ETag)
     std::string temp_file = getCacheDirectory() + "/temp_headers";
-    std::string curl_cmd = "curl -s -I -L \"" + url + "\" > \"" + temp_file + "\" 2>/dev/null";
-    
-    int result = system(curl_cmd.c_str());
+
+    int result = safeCurlCommand(url, temp_file, true);
     if (result != 0) {
         // If we can't check remote, assume cache is valid (offline mode)
         std::filesystem::remove(temp_file);

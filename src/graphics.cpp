@@ -163,21 +163,36 @@ void Graphics::circle(DrawMode mode, float x, float y, float radius, int segment
     setColor(current_color_);
 
     if (mode == DrawMode::Fill) {
-        // Draw filled circle using triangles (simplified)
-        for (int i = 0; i < segments; ++i) {
-            float angle1 = (float(i) / segments) * 2.0f * M_PI;
-            float angle2 = (float(i + 1) / segments) * 2.0f * M_PI;
+        // Draw filled circle using triangle fan with SDL_RenderGeometry
+        std::vector<SDL_Vertex> vertices;
+        std::vector<int> indices;
 
-            float x1 = x + radius * std::cos(angle1);
-            float y1 = y + radius * std::sin(angle1);
-            float x2 = x + radius * std::cos(angle2);
-            float y2 = y + radius * std::sin(angle2);
+        // Center vertex
+        SDL_Vertex center;
+        center.position = {x, y};
+        center.color = {current_color_.r, current_color_.g, current_color_.b, current_color_.a};
+        center.tex_coord = {0.0f, 0.0f};
+        vertices.push_back(center);
 
-            // Draw triangle as lines for now (simpler approach)
-            SDL_RenderLine(renderer_, x, y, x1, y1);
-            SDL_RenderLine(renderer_, x1, y1, x2, y2);
-            SDL_RenderLine(renderer_, x2, y2, x, y);
+        // Generate circle vertices
+        for (int i = 0; i <= segments; ++i) {
+            float angle = (float(i) / segments) * 2.0f * M_PI;
+            SDL_Vertex v;
+            v.position = {x + radius * std::cos(angle), y + radius * std::sin(angle)};
+            v.color = center.color;
+            v.tex_coord = {0.0f, 0.0f};
+            vertices.push_back(v);
         }
+
+        // Generate triangle fan indices
+        for (int i = 1; i < segments + 1; ++i) {
+            indices.push_back(0);      // center
+            indices.push_back(i);      // current vertex
+            indices.push_back(i + 1);  // next vertex
+        }
+
+        SDL_RenderGeometry(renderer_, nullptr, vertices.data(), vertices.size(),
+                          indices.data(), indices.size());
     } else {
         // Draw circle outline
         std::vector<SDL_FPoint> points;
@@ -198,20 +213,36 @@ void Graphics::ellipse(DrawMode mode, float x, float y, float rx, float ry, int 
     setColor(current_color_);
 
     if (mode == DrawMode::Fill) {
-        for (int i = 0; i < segments; ++i) {
-            float angle1 = (float(i) / segments) * 2.0f * M_PI;
-            float angle2 = (float(i + 1) / segments) * 2.0f * M_PI;
+        // Draw filled ellipse using triangle fan with SDL_RenderGeometry
+        std::vector<SDL_Vertex> vertices;
+        std::vector<int> indices;
 
-            float x1 = x + rx * std::cos(angle1);
-            float y1 = y + ry * std::sin(angle1);
-            float x2 = x + rx * std::cos(angle2);
-            float y2 = y + ry * std::sin(angle2);
+        // Center vertex
+        SDL_Vertex center;
+        center.position = {x, y};
+        center.color = {current_color_.r, current_color_.g, current_color_.b, current_color_.a};
+        center.tex_coord = {0.0f, 0.0f};
+        vertices.push_back(center);
 
-            // Draw triangle as lines for now
-            SDL_RenderLine(renderer_, x, y, x1, y1);
-            SDL_RenderLine(renderer_, x1, y1, x2, y2);
-            SDL_RenderLine(renderer_, x2, y2, x, y);
+        // Generate ellipse vertices
+        for (int i = 0; i <= segments; ++i) {
+            float angle = (float(i) / segments) * 2.0f * M_PI;
+            SDL_Vertex v;
+            v.position = {x + rx * std::cos(angle), y + ry * std::sin(angle)};
+            v.color = center.color;
+            v.tex_coord = {0.0f, 0.0f};
+            vertices.push_back(v);
         }
+
+        // Generate triangle fan indices
+        for (int i = 1; i < segments + 1; ++i) {
+            indices.push_back(0);      // center
+            indices.push_back(i);      // current vertex
+            indices.push_back(i + 1);  // next vertex
+        }
+
+        SDL_RenderGeometry(renderer_, nullptr, vertices.data(), vertices.size(),
+                          indices.data(), indices.size());
     } else {
         std::vector<SDL_FPoint> points;
         for (int i = 0; i <= segments; ++i) {
@@ -243,12 +274,30 @@ void Graphics::polygon(DrawMode mode, const std::vector<float>& points) {
     }
 
     if (mode == DrawMode::Fill) {
-        // Simple triangle fan fill using lines (simplified)
-        for (size_t i = 1; i < sdl_points.size() - 1; ++i) {
-            SDL_RenderLine(renderer_, sdl_points[0].x, sdl_points[0].y, sdl_points[i].x, sdl_points[i].y);
-            SDL_RenderLine(renderer_, sdl_points[i].x, sdl_points[i].y, sdl_points[i + 1].x, sdl_points[i + 1].y);
-            SDL_RenderLine(renderer_, sdl_points[i + 1].x, sdl_points[i + 1].y, sdl_points[0].x, sdl_points[0].y);
+        // Use triangle fan rendering with SDL_RenderGeometry
+        std::vector<SDL_Vertex> vertices;
+        std::vector<int> indices;
+
+        SDL_FColor color = {current_color_.r, current_color_.g, current_color_.b, current_color_.a};
+
+        // Convert points to vertices
+        for (const auto& point : sdl_points) {
+            SDL_Vertex v;
+            v.position = point;
+            v.color = color;
+            v.tex_coord = {0.0f, 0.0f};
+            vertices.push_back(v);
         }
+
+        // Generate triangle fan indices
+        for (size_t i = 1; i < vertices.size() - 1; ++i) {
+            indices.push_back(0);      // first vertex
+            indices.push_back(i);      // current vertex
+            indices.push_back(i + 1);  // next vertex
+        }
+
+        SDL_RenderGeometry(renderer_, nullptr, vertices.data(), vertices.size(),
+                          indices.data(), indices.size());
     } else {
         sdl_points.push_back(sdl_points[0]); // Close the polygon
         SDL_RenderLines(renderer_, sdl_points.data(), sdl_points.size());
@@ -266,20 +315,36 @@ void Graphics::arc(DrawMode mode, float x, float y, float radius, float angle1, 
     int actual_segments = std::max(1, calculated_segments);
 
     if (mode == DrawMode::Fill) {
-        for (int i = 0; i < actual_segments; ++i) {
-            float a1 = angle1 + (float(i) / actual_segments) * angle_range;
-            float a2 = angle1 + (float(i + 1) / actual_segments) * angle_range;
+        // Draw filled arc using triangle fan with SDL_RenderGeometry
+        std::vector<SDL_Vertex> vertices;
+        std::vector<int> indices;
 
-            float x1 = x + radius * std::cos(a1);
-            float y1 = y + radius * std::sin(a1);
-            float x2 = x + radius * std::cos(a2);
-            float y2 = y + radius * std::sin(a2);
+        // Center vertex
+        SDL_Vertex center;
+        center.position = {x, y};
+        center.color = {current_color_.r, current_color_.g, current_color_.b, current_color_.a};
+        center.tex_coord = {0.0f, 0.0f};
+        vertices.push_back(center);
 
-            // Draw triangle as lines
-            SDL_RenderLine(renderer_, x, y, x1, y1);
-            SDL_RenderLine(renderer_, x1, y1, x2, y2);
-            SDL_RenderLine(renderer_, x2, y2, x, y);
+        // Generate arc vertices
+        for (int i = 0; i <= actual_segments; ++i) {
+            float angle = angle1 + (float(i) / actual_segments) * angle_range;
+            SDL_Vertex v;
+            v.position = {x + radius * std::cos(angle), y + radius * std::sin(angle)};
+            v.color = center.color;
+            v.tex_coord = {0.0f, 0.0f};
+            vertices.push_back(v);
         }
+
+        // Generate triangle fan indices
+        for (int i = 1; i < actual_segments + 1; ++i) {
+            indices.push_back(0);      // center
+            indices.push_back(i);      // current vertex
+            indices.push_back(i + 1);  // next vertex
+        }
+
+        SDL_RenderGeometry(renderer_, nullptr, vertices.data(), vertices.size(),
+                          indices.data(), indices.size());
     } else {
         std::vector<SDL_FPoint> points;
         for (int i = 0; i <= actual_segments; ++i) {

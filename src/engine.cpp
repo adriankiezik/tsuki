@@ -13,10 +13,6 @@
 #include <SDL3_image/SDL_image.h>
 #endif
 
-#ifdef TSUKI_HAS_SDL_MIXER
-#include <SDL3_mixer/SDL_mixer.h>
-#endif
-
 #ifdef TSUKI_HAS_SDL_TTF
 #include <SDL3_ttf/SDL_ttf.h>
 #endif
@@ -29,47 +25,10 @@ Engine& Engine::getInstance() {
 }
 
 bool Engine::init() {
-    // Try multiple audio drivers in order of preference for Linux compatibility
-    const char* audio_drivers[] = {"pipewire", "pulse", "alsa", "oss", nullptr};
-    bool audio_initialized = false;
-    
-    // First try with default audio driver
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS)) {
-        std::cout << "SDL initialized successfully with default audio driver" << std::endl;
-        audio_initialized = true;
-    } else {
-        std::cerr << "Failed to initialize SDL with default audio driver: " << SDL_GetError() << std::endl;
-        
-        // Try specific audio drivers by setting environment variable
-        for (int i = 0; audio_drivers[i] != nullptr; i++) {
-            std::cout << "Trying audio driver: " << audio_drivers[i] << std::endl;
-            
-            // Set the audio driver environment variable
-            tsuki::Platform::setEnvironmentVariable("SDL_AUDIODRIVER", audio_drivers[i]);
-            
-            if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS)) {
-                std::cout << "SDL initialized successfully with " << audio_drivers[i] << " audio driver" << std::endl;
-                audio_initialized = true;
-                break;
-            } else {
-                std::cerr << "Failed with " << audio_drivers[i] << ": " << SDL_GetError() << std::endl;
-                // Need to quit SDL before trying again
-                SDL_Quit();
-            }
-        }
-        
-        // Clean up environment variable
-        tsuki::Platform::unsetEnvironmentVariable("SDL_AUDIODRIVER");
-        
-        // If all audio drivers fail, fall back to video-only
-        if (!audio_initialized) {
-            std::cerr << "All audio drivers failed, initializing without audio..." << std::endl;
-            if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
-                std::cerr << "Failed to initialize SDL: " << SDL_GetError() << std::endl;
-                return false;
-            }
-            std::cout << "SDL initialized successfully without audio support" << std::endl;
-        }
+    // Initialize SDL (video and events only - audio is handled by miniaudio)
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
+        std::cerr << "Failed to initialize SDL: " << SDL_GetError() << std::endl;
+        return false;
     }
 
 #ifdef TSUKI_HAS_SDL_IMAGE
@@ -80,23 +39,9 @@ bool Engine::init() {
     }
 #endif
 
-#ifdef TSUKI_HAS_SDL_MIXER
-    if (Mix_OpenAudio(22050, MIX_DEFAULT_FORMAT, 2, 4096) < 0) {
-        std::cerr << "Failed to initialize SDL_mixer: " << Mix_GetError() << std::endl;
-#ifdef TSUKI_HAS_SDL_IMAGE
-        IMG_Quit();
-#endif
-        SDL_Quit();
-        return false;
-    }
-#endif
-
 #ifdef TSUKI_HAS_SDL_TTF
     if (TTF_Init() < 0) {
         std::cerr << "Failed to initialize SDL_ttf: " << TTF_GetError() << std::endl;
-#ifdef TSUKI_HAS_SDL_MIXER
-        Mix_CloseAudio();
-#endif
 #ifdef TSUKI_HAS_SDL_IMAGE
         IMG_Quit();
 #endif
@@ -109,9 +54,6 @@ bool Engine::init() {
     if (!window_.init()) {
 #ifdef TSUKI_HAS_SDL_TTF
         TTF_Quit();
-#endif
-#ifdef TSUKI_HAS_SDL_MIXER
-        Mix_CloseAudio();
 #endif
 #ifdef TSUKI_HAS_SDL_IMAGE
         IMG_Quit();
@@ -135,9 +77,6 @@ bool Engine::init() {
 #ifdef TSUKI_HAS_SDL_TTF
         TTF_Quit();
 #endif
-#ifdef TSUKI_HAS_SDL_MIXER
-        Mix_CloseAudio();
-#endif
 #ifdef TSUKI_HAS_SDL_IMAGE
         IMG_Quit();
 #endif
@@ -150,9 +89,6 @@ bool Engine::init() {
         window_.shutdown();
 #ifdef TSUKI_HAS_SDL_TTF
         TTF_Quit();
-#endif
-#ifdef TSUKI_HAS_SDL_MIXER
-        Mix_CloseAudio();
 #endif
 #ifdef TSUKI_HAS_SDL_IMAGE
         IMG_Quit();
@@ -168,9 +104,6 @@ bool Engine::init() {
         window_.shutdown();
 #ifdef TSUKI_HAS_SDL_TTF
         TTF_Quit();
-#endif
-#ifdef TSUKI_HAS_SDL_MIXER
-        Mix_CloseAudio();
 #endif
 #ifdef TSUKI_HAS_SDL_IMAGE
         IMG_Quit();
@@ -317,9 +250,6 @@ void Engine::quit() {
 
 #ifdef TSUKI_HAS_SDL_TTF
     TTF_Quit();
-#endif
-#ifdef TSUKI_HAS_SDL_MIXER
-    Mix_CloseAudio();
 #endif
 #ifdef TSUKI_HAS_SDL_IMAGE
     IMG_Quit();

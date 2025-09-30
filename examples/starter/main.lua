@@ -23,7 +23,7 @@ local message = "Welcome to Tsuki Engine!"
 function tsuki.load()
     -- This function is called once when the game starts
     -- Set window title
-    tsuki.window.setTitle("Tsuki Starter Example")
+    tsuki.window:setTitle("Tsuki Starter Example")
 end
 
 
@@ -34,22 +34,22 @@ function tsuki.update(dt)
     time = time + dt
 
     -- Move player with arrow keys
-    if tsuki.keyboard.isDown("left") then
+    if tsuki.keyboard:isDown("left") then
         player.x = player.x - player.speed * dt
     end
-    if tsuki.keyboard.isDown("right") then
+    if tsuki.keyboard:isDown("right") then
         player.x = player.x + player.speed * dt
     end
-    if tsuki.keyboard.isDown("up") then
+    if tsuki.keyboard:isDown("up") then
         player.y = player.y - player.speed * dt
     end
-    if tsuki.keyboard.isDown("down") then
+    if tsuki.keyboard:isDown("down") then
         player.y = player.y + player.speed * dt
     end
 
     -- Keep player within window bounds
-    local windowWidth = tsuki.window.getWidth()
-    local windowHeight = tsuki.window.getHeight()
+    local windowWidth = tsuki.window:getWidth()
+    local windowHeight = tsuki.window:getHeight()
 
     if player.x < 0 then player.x = 0 end
     if player.x + player.width > windowWidth then
@@ -71,23 +71,23 @@ function tsuki.draw()
     -- This function is called every frame to render graphics
 
     -- Clear the screen with a dark blue background
-    tsuki.graphics.clear(0.1, 0.1, 0.3, 1.0)
+    tsuki.graphics:clear(0.1, 0.1, 0.3, 1.0)
 
     -- Draw a filled rectangle for the player (white)
-    tsuki.graphics.setColor(1.0, 1.0, 1.0, 1.0)
-    tsuki.graphics.rectangle("fill", player.x, player.y, player.width, player.height)
+    tsuki.graphics:setColor(1.0, 1.0, 1.0, 1.0)
+    tsuki.graphics:rectangle("fill", player.x, player.y, player.width, player.height)
 
     -- Draw a border around the player (yellow)
-    tsuki.graphics.setColor(1.0, 1.0, 0.0, 1.0)
-    tsuki.graphics.rectangle("line", player.x, player.y, player.width, player.height)
+    tsuki.graphics:setColor(1.0, 1.0, 0.0, 1.0)
+    tsuki.graphics:rectangle("line", player.x, player.y, player.width, player.height)
 
     -- Draw the animated circle
-    tsuki.graphics.setColor(circle.color.r, circle.color.g, circle.color.b, 1.0)
-    tsuki.graphics.circle("fill", circle.x, circle.y, circle.radius)
+    tsuki.graphics:setColor(circle.color.r, circle.color.g, circle.color.b, 1.0)
+    tsuki.graphics:circle("fill", circle.x, circle.y, circle.radius)
 
     -- Draw a line from player to circle
-    tsuki.graphics.setColor(0.5, 0.8, 1.0, 1.0)
-    tsuki.graphics.line(
+    tsuki.graphics:setColor(0.5, 0.8, 1.0, 1.0)
+    tsuki.graphics:line(
         player.x + player.width/2,
         player.y + player.height/2,
         circle.x,
@@ -95,16 +95,16 @@ function tsuki.draw()
     )
 
     -- Draw some text
-    tsuki.graphics.setColor(1.0, 1.0, 1.0, 1.0)
-    tsuki.graphics.print(message, 10, 10)
-    tsuki.graphics.print("Use arrow keys to move the player", 10, 30)
-    tsuki.graphics.print("Press ESC to exit", 10, 50)
+    tsuki.graphics:setColor(1.0, 1.0, 1.0, 1.0)
+    tsuki.graphics:print(message, 10, 10)
+    tsuki.graphics:print("Use arrow keys to move the player", 10, 30)
+    tsuki.graphics:print("Press ESC to exit", 10, 50)
 
     -- Get and display mouse position
-    local mouseX, mouseY = tsuki.mouse.getPosition()
-    tsuki.graphics.print("Mouse: " .. mouseX .. ", " .. mouseY, 10, 70)
+    local mouseX, mouseY = tsuki.mouse:getPosition()
+    tsuki.graphics:print("Mouse: " .. mouseX .. ", " .. mouseY, 10, 70)
 
     -- Draw a small circle at mouse position
-    tsuki.graphics.setColor(1.0, 0.0, 1.0, 0.7)
-    tsuki.graphics.circle("fill", mouseX, mouseY, 5)
+    tsuki.graphics:setColor(1.0, 0.0, 1.0, 0.7)
+    tsuki.graphics:circle("fill", mouseX, mouseY, 5)
 end

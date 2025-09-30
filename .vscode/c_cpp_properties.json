@@ -9,6 +9,11 @@
                 "${workspaceFolder}/vendor/libzip/lib",
                 "${workspaceFolder}/vendor/zlib",
                 "${workspaceFolder}/vendor/sdl3/include",
+                "${workspaceFolder}/vendor/sol3/include",
+                "${workspaceFolder}/vendor/miniaudio",
+                "${workspaceFolder}/vendor/spdlog/include",
+                "${workspaceFolder}/vendor/json/include",
+                "${workspaceFolder}/vendor/curl/include",
                 "/usr/include",
                 "/usr/local/include"
             ],
